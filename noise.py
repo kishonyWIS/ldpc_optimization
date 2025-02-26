@@ -22,15 +22,15 @@ class NoiseModel:
     @staticmethod
     def SD6(p: float) -> 'NoiseModel':
         return NoiseModel(
-            any_clifford_1=p,
+            any_clifford_1=0, #p
             idle=0,
             measure_reset_idle=0,
             noisy_gates={
                 "CX": p,
-                "R": p,
-                "RX": p,
-                "M": p,
-                "MX": p,
+                # "R": p,
+                # "RX": p,
+                # "M": p,
+                # "MX": p,
             },
         )
 
