@@ -3,6 +3,7 @@ from bposd.css import css_code
 import stim
 from noise import NoiseModel
 from stimbposd import BPOSD
+from tqdm import tqdm
 
 # Takes as input a binary square matrix A
 # Returns the rank of A over the binary field F_2
@@ -117,15 +118,13 @@ def get_BB_code():
     lz = np.load('lz.npy')
     return hx,hz,lz
 
-def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model:NoiseModel,x_detectors=False,z_detectors=True,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1,p=0):
+def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model:NoiseModel,x_detectors=False,z_detectors=True,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1):
     circ = stim.Circuit()
     num_stabilizers = len(x_stabilizers) + len(z_stabilizers)
     x_measurement_circ = measure_x_stabilizers(x_stabilizers,n)
     z_measurement_circ = measure_z_stabilizers(z_stabilizers,n)
-    # noisy_x_measurement_circ = noise_model.noisy_circuit(x_measurement_circ)
-    # noisy_z_measurement_circ = noise_model.noisy_circuit(z_measurement_circ)
-    noisy_x_measurement_circ = measure_x_stabilizers(x_stabilizers,n,cx_noise_p=p)
-    noisy_z_measurement_circ = measure_z_stabilizers(z_stabilizers,n,cx_noise_p=p)
+    noisy_x_measurement_circ = noise_model.noisy_circuit(x_measurement_circ)
+    noisy_z_measurement_circ = noise_model.noisy_circuit(z_measurement_circ)
     for i_cycle, noisy in enumerate([False]*cycles_before_noise + [True]*cycles_with_noise + [False]*cycles_after_noise):
         circ += x_measurement_circ if not noisy else noisy_x_measurement_circ
         circ += z_measurement_circ if not noisy else noisy_z_measurement_circ
@@ -150,36 +149,38 @@ def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model:Noise
                               i_logical)
     return circ
 
-def measure_z_stabilizers(z_stabilizers,n,cx_noise_p=0):
+def measure_z_stabilizers(z_stabilizers,n):
     circ = stim.Circuit()
     for qubits in z_stabilizers:
         # reset the ancilla
         circ.append_operation("R", [n])
+        circ.append_operation("TICK")
         # apply cx gates
         for j in qubits:
-            if cx_noise_p > 0:
-                circ.append_operation("DEPOLARIZE1", [n,j],cx_noise_p)
             circ.append_operation("CX", [j,n])
+            circ.append_operation("TICK")
         # measure the ancilla
         circ.append_operation("M", [n])
+        circ.append_operation("TICK")
     return circ
 
-def measure_x_stabilizers(x_stabilizers,n,cx_noise_p=0):
+def measure_x_stabilizers(x_stabilizers,n):
     circ = stim.Circuit()
     for qubits in x_stabilizers:
         # reset the ancilla
         circ.append_operation("RX", [n])
+        circ.append_operation("TICK")
         # apply cx gates
         for j in qubits:
-            if cx_noise_p > 0:
-                circ.append_operation("DEPOLARIZE1", [n,j],cx_noise_p)
             circ.append_operation("CX", [n,j])
+            circ.append_operation("TICK")
         # measure the ancilla
         circ.append_operation("MX", [n])
+        circ.append_operation("TICK")
     return circ
 
-def get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,p,num_shots):
-    circuit = memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,p,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1,p=p)
+def get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots):
+    circuit = memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1)
 
     sampler = circuit.compile_detector_sampler()
     shots, observables = sampler.sample(num_shots, separate_observables=True)
@@ -197,15 +198,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Simulated annealing to optimize stabilizer order
-def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initial_temp=1.0, cooling_rate=0.99, min_temp=0.01, max_iters=100):
+def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model, num_shots, initial_temp=1.0, cooling_rate=0.97, min_temp=0.00, max_iters=100):
     current_x, current_z = [list(row) for row in x_stabilizers], [list(row) for row in z_stabilizers]
-    current_energy = get_logical_error_rate(n, current_x, current_z, lz, p, num_shots)
+    current_energy = get_logical_error_rate(n, current_x, current_z, lz, noise_model, num_shots)
     best_x, best_z, best_energy = current_x, current_z, current_energy
 
     energies, temperature = [current_energy], initial_temp
     temperatures = [initial_temp]
 
-    for iteration in range(max_iters):
+    for iteration in tqdm(range(max_iters)):
         # Choose stabilizer type and shuffle one row
         current, candidate = (current_x, [row[:] for row in current_x]) if random.random() < 0.5 else (current_z, [row[:] for row in current_z])
         random.shuffle(candidate[random.randint(0, len(candidate) - 1)])
@@ -213,7 +214,7 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initi
         # Evaluate new energy
         new_energy = get_logical_error_rate(n, candidate if current is current_x else current_x,
                                             candidate if current is current_z else current_z,
-                                            lz, p, num_shots)
+                                            lz, noise_model, num_shots)
 
         # Accept based on energy difference
         if new_energy < current_energy or random.random() < np.exp((current_energy - new_energy) / temperature):
@@ -243,7 +244,7 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initi
     line.set_xdata(range(len(energies)))
     line.set_ydata(energies)
     # plot the temperature
-    plt.plot(temperatures, label='Temperature')
+    plt.plot(np.array(temperatures)/10, label='Temperature/10')
     ax.relim()
     ax.autoscale_view()
     plt.pause(0.01)
@@ -255,60 +256,60 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initi
 if __name__ == '__main__':
     hx,hz,lz = get_BB_code()
     n = hx.shape[1]
-    p = 0.03
-    # noise_model = NoiseModel.SD6(p=p)
+    p = 0.02
+    noise_model = NoiseModel.SD6(p=p)
     num_shots = 10000
     x_stabilizers = [list(np.where(row)[0]) for row in hx]
     z_stabilizers = [list(np.where(row)[0]) for row in hz]
 
 
-    # surface code:
-    z_stabilizers = [
-        [0,1],
-        [2,3],
-        [1,2,5,6],
-        [4,5,8,9],
-        [6,7,10,11],
-        [9,10,13,14],
-        [12,13],
-        [14,15]]
+    # # surface code:
+    # z_stabilizers = [
+    #     [0,1],
+    #     [2,3],
+    #     [1,2,5,6],
+    #     [4,5,8,9],
+    #     [6,7,10,11],
+    #     [9,10,13,14],
+    #     [12,13],
+    #     [14,15]]
+    #
+    # x_stabilizers = [
+    #     [0,1,4,5],
+    #     [2,3,6,7],
+    #     [4,8],
+    #     [5,6,9,10],
+    #     [7,11],
+    #     [8,9,12,13],
+    #     [10,11,14,15]]
+    #
+    # n = 16
+    # lz = np.zeros((1, n), dtype=int)
+    # lz[0, [0,4,8,12]] = 1
 
-    x_stabilizers = [
-        [0,1,4,5],
-        [2,3,6,7],
-        [4,8],
-        [5,6,9,10],
-        [7,11],
-        [8,9,12,13],
-        [10,11,14,15]]
-
-    n = 16
-    lz = np.zeros((1, n), dtype=int)
-    lz[0, [0,4,8,12]] = 1
-
-    # 3 by 3 surface code
-    z_stabilizers = [
-        [0,1],
-        [1,2,4,5],
-        [3,4,6,7],
-        [7,8]]
-
-    x_stabilizers = [
-        [0,1,3,4],
-        [2,5],
-        [3,6],
-        [4,7,5,8]]
-
-    n = 9
-    lz = np.zeros((1, n), dtype=int)
-    lz[0, [0,3,6]] = 1
+    # # 3 by 3 surface code
+    # z_stabilizers = [
+    #     [0,1],
+    #     [1,2,4,5],
+    #     [3,4,6,7],
+    #     [7,8]]
+    #
+    # x_stabilizers = [
+    #     [0,1,3,4],
+    #     [2,5],
+    #     [3,6],
+    #     [4,5,7,8]]
+    #
+    # n = 9
+    # lz = np.zeros((1, n), dtype=int)
+    # lz[0, [0,3,6]] = 1
 
 
 
     # logical_error_rate = get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots)
 
-    best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p,
-                                                                  num_shots,max_iters=300)
+    best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model,
+                                                                  num_shots,max_iters=500)
     print(f'Best logical error rate: {best_logical_error_rate}')
     print(f'Best X stabilizers: {best_x}')
     print(f'Best Z stabilizers: {best_z}')

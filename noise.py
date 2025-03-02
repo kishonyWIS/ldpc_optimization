@@ -27,10 +27,10 @@ class NoiseModel:
             measure_reset_idle=0,
             noisy_gates={
                 "CX": p,
-                # "R": p,
-                # "RX": p,
-                # "M": p,
-                # "MX": p,
+                "R": 0,
+                "RX": 0,
+                "M": 0,
+                "MX": 0,
             },
         )
 
