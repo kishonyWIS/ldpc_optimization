@@ -1,7 +1,6 @@
 import numpy as np
 from bposd.css import css_code
 import stim
-from noise import NoiseModel
 from stimbposd import BPOSD
 from tqdm import tqdm
 
@@ -48,25 +47,25 @@ def get_BB_code():
     #b1,b2,b3=7,9,20
 
     # [[72,12,6]]
-    #ell,m = 6,6
-    #a1,a2,a3=3,1,2
-    #b1,b2,b3=3,1,2
+    # ell,m = 6,6
+    # a1,a2,a3=3,1,2
+    # b1,b2,b3=3,1,2
 
 
-    # Ted's code [[90,8,10]]
-    #ell,m = 15,3
-    #a1,a2,a3 = 9,1,2
-    #b1,b2,b3 = 0,2,7
+    # # Ted's code [[90,8,10]]
+    # ell,m = 15,3
+    # a1,a2,a3 = 9,1,2
+    # b1,b2,b3 = 0,2,7
 
     # [[108,8,10]]
-    #ell,m = 9,6
-    #a1,a2,a3 = 3,1,2
-    #b1,b2,b3 = 3,1,2
+    # ell,m = 9,6
+    # a1,a2,a3 = 3,1,2
+    # b1,b2,b3 = 3,1,2
 
     # [[288,12,18]]
-    #ell,m = 12,12
-    #a1,a2,a3 = 3,2,7
-    #b1,b2,b3 = 3,1,2
+    # ell,m = 12,12
+    # a1,a2,a3 = 3,2,7
+    # b1,b2,b3 = 3,1,2
 
     # code length
     n = 2*m*ell
@@ -105,116 +104,192 @@ def get_BB_code():
     hx = np.hstack((A,B))
     hz = np.hstack((BT,AT))
 
-    # number of logical qubits
+    # # number of logical qubits
     # k = n - rank2(hx) - rank2(hz)
     # qcode=css_code(hx,hz)
     # print('Testing CSS code...')
     # qcode.test()
     # print('Done')
-    #
     # lz = qcode.lz
     # lx = qcode.lx
+    # with open(f'lz_ell_{ell}_m_{m}_a1_{a1}_a2_{a2}_a3_{a3}_b1_{b1}_b2_{b2}_b3_{b3}.npy', 'wb') as f:
+    #     np.save(f, lz.toarray())
 
-    lz = np.load('lz.npy')
+    lz = np.load(f'lz_ell_{ell}_m_{m}_a1_{a1}_a2_{a2}_a3_{a3}_b1_{b1}_b2_{b2}_b3_{b3}.npy')
     return hx,hz,lz
 
-def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model:NoiseModel,x_detectors=False,z_detectors=True,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1):
+def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,p,x_detectors=False,z_detectors=True,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1):
     circ = stim.Circuit()
-    num_stabilizers = len(x_stabilizers) + len(z_stabilizers)
-    x_measurement_circ = measure_x_stabilizers(x_stabilizers,n)
-    z_measurement_circ = measure_z_stabilizers(z_stabilizers,n)
-    noisy_x_measurement_circ = noise_model.noisy_circuit(x_measurement_circ)
-    noisy_z_measurement_circ = noise_model.noisy_circuit(z_measurement_circ)
+    measurement_counter = 0
+    measurement_indexes = {'X_syndromes':{i:[] for i in range(len(x_stabilizers))},
+                           'Z_syndromes':{i:[] for i in range(len(z_stabilizers))},
+                           'X_flags':{i:[] for i in range(len(x_stabilizers))},
+                           'Z_flags':{i:[] for i in range(len(z_stabilizers))}}
     for i_cycle, noisy in enumerate([False]*cycles_before_noise + [True]*cycles_with_noise + [False]*cycles_after_noise):
-        circ += x_measurement_circ if not noisy else noisy_x_measurement_circ
-        circ += z_measurement_circ if not noisy else noisy_z_measurement_circ
-        # add detectors
-        if i_cycle > 0:
-            if x_detectors:
-                for i_x in range(len(x_stabilizers)):
-                    circ.append_operation("DETECTOR", list(map(stim.target_rec,
-                                                               [i_x - 2*num_stabilizers, i_x - num_stabilizers])),
-                                          [i_cycle, i_x, 0])
-            if z_detectors:
-                for i_z in range(len(z_stabilizers)):
-                    circ.append_operation("DETECTOR", list(map(stim.target_rec,
-                                                               [i_z - 2*num_stabilizers + len(x_stabilizers), i_z - num_stabilizers + len(x_stabilizers)])),
-                                          [i_cycle, i_z, 1])
+        x_measurement_circ, measurement_counter = measure_x_stabilizers(x_stabilizers,n,
+                                                                        p if noisy else 0,
+                                                                        flag = noisy,
+                                                                        measurement_indexes=measurement_indexes,
+                                                                        measurement_counter=measurement_counter)
+        z_measurement_circ, measurement_counter = measure_z_stabilizers(z_stabilizers,n,
+                                                                        p if noisy else 0,
+                                                                        flag = noisy,
+                                                                        measurement_indexes=measurement_indexes,
+                                                                        measurement_counter=measurement_counter)
+        circ += x_measurement_circ
+        circ += z_measurement_circ
+    # add detectors
+    if x_detectors:
+        for i_stabilizer, indexes_of_measurements in measurement_indexes['X_syndromes'].items():
+            for i_cycle in range(len(indexes_of_measurements) - 1):
+                indexes = [ii - measurement_counter for ii in indexes_of_measurements[i_cycle:i_cycle+2]]
+                circ.append_operation("DETECTOR",
+                                      list(map(stim.target_rec,indexes)),
+                                      [i_cycle, i_stabilizer, 0])
+    if z_detectors:
+        for i_stabilizer, indexes_of_measurements in measurement_indexes['Z_syndromes'].items():
+            for i_cycle in range(len(indexes_of_measurements) - 1):
+                indexes = [ii - measurement_counter for ii in indexes_of_measurements[i_cycle:i_cycle+2]]
+                circ.append_operation("DETECTOR",
+                                      list(map(stim.target_rec,indexes)),
+                                      [i_cycle, i_stabilizer, 1])
+
     # add final measurements and logical operators
     circ.append_operation("M", [i for i in range(n)])
+    measurement_counter += n
     for i_logical, logical in enumerate(lz):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
         circ.append_operation("OBSERVABLE_INCLUDE",
                               [stim.target_rec(i - n) for i in qubits_in_logical],
                               i_logical)
-    return circ
 
-def measure_z_stabilizers(z_stabilizers,n):
+    circ_without_flag_observables = circ.copy()
+
+    # add flag observables
+    observable_index = lz.shape[0]
+    for i_flag, indexes_of_measurements in measurement_indexes['X_flags'].items():
+        for i_cycle in range(len(indexes_of_measurements)):
+            indexes = [ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
+            circ.append_operation("OBSERVABLE_INCLUDE",
+                                  list(map(stim.target_rec, indexes)),
+                                  observable_index)
+            observable_index += 1
+    for i_flag, indexes_of_measurements in measurement_indexes['Z_flags'].items():
+        for i_cycle in range(len(indexes_of_measurements)):
+            indexes = [ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
+            circ.append_operation("OBSERVABLE_INCLUDE",
+                                  list(map(stim.target_rec, indexes)),
+                                  observable_index)
+            observable_index += 1
+
+    return circ, circ_without_flag_observables
+
+def measure_z_stabilizers(z_stabilizers,n,p=0,flag=False,measurement_indexes=None,measurement_counter=0):
     circ = stim.Circuit()
-    for qubits in z_stabilizers:
+    for i_stab, qubits in enumerate(z_stabilizers):
         # reset the ancilla
         circ.append_operation("R", [n])
-        circ.append_operation("TICK")
+        # flag
+        if flag and p>0:
+            circ.append_operation("RX", [n+1])
+            circ.append_operation("CX", [n+1,n])
         # apply cx gates
         for j in qubits:
+            if p > 0:
+                circ.append_operation("DEPOLARIZE2", [j, n], p)
             circ.append_operation("CX", [j,n])
-            circ.append_operation("TICK")
+        # flag
+        if flag and p>0:
+            circ.append_operation("CX", [n+1,n])
+            circ.append_operation("MX", [n+1])
+            measurement_indexes['Z_flags'][i_stab].append(measurement_counter)
+            measurement_counter += 1
         # measure the ancilla
         circ.append_operation("M", [n])
-        circ.append_operation("TICK")
-    return circ
+        measurement_indexes['Z_syndromes'][i_stab].append(measurement_counter)
+        measurement_counter += 1
+    return circ, measurement_counter
 
-def measure_x_stabilizers(x_stabilizers,n):
+def measure_x_stabilizers(x_stabilizers,n,p=0,flag=False,measurement_indexes=None,measurement_counter=0):
     circ = stim.Circuit()
-    for qubits in x_stabilizers:
+    for i_stab, qubits in enumerate(x_stabilizers):
         # reset the ancilla
         circ.append_operation("RX", [n])
-        circ.append_operation("TICK")
+        # flag
+        if flag and p>0:
+            circ.append_operation("R", [n+1])
+            circ.append_operation("CX", [n,n+1])
         # apply cx gates
         for j in qubits:
+            if p > 0:
+                circ.append_operation("DEPOLARIZE2", [n, j], p)
             circ.append_operation("CX", [n,j])
-            circ.append_operation("TICK")
+        # flag
+        if flag and p>0:
+            circ.append_operation("CX", [n,n+1])
+            circ.append_operation("M", [n+1])
+            measurement_indexes['X_flags'][i_stab].append(measurement_counter)
+            measurement_counter += 1
         # measure the ancilla
         circ.append_operation("MX", [n])
-        circ.append_operation("TICK")
-    return circ
+        measurement_indexes['X_syndromes'][i_stab].append(measurement_counter)
+        measurement_counter += 1
+    return circ, measurement_counter
 
-def get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots):
-    circuit = memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,noise_model,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1)
+def get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,p,num_shots):
+    circuit, circuit_without_flag_observables = memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,p,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1)
 
     sampler = circuit.compile_detector_sampler()
-    shots, observables = sampler.sample(num_shots, separate_observables=True)
+    syndromes, observables = sampler.sample(num_shots, separate_observables=True)
 
-    decoder = BPOSD(circuit.detector_error_model(), max_bp_iters=20)
+    flags = observables[:, lz.shape[0]:]
+    observables = observables[:, :lz.shape[0]]
 
-    predicted_observables = decoder.decode_batch(shots)
-    num_mistakes = np.sum(np.any(predicted_observables != observables, axis=1))
+    decoder = BPOSD(circuit_without_flag_observables.detector_error_model(), max_bp_iters=20)
+
+    predicted_observables = decoder.decode_batch(syndromes)
+    mistakes = np.any(predicted_observables != observables, axis=1)
+    num_mistakes = np.sum(mistakes)
 
     print(f"{num_mistakes}/{num_shots}")
-    return num_mistakes/num_shots
+
+    worst_flag = np.argmax(np.sum(flags[mistakes], axis=0))
+    return num_mistakes/num_shots, worst_flag
 
 import random
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Simulated annealing to optimize stabilizer order
-def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model, num_shots, initial_temp=1.0, cooling_rate=0.97, min_temp=0.00, max_iters=100):
+def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initial_temp=1.0, cooling_rate=0.95, min_temp=0.00, max_iters=100, use_flag=False):
     current_x, current_z = [list(row) for row in x_stabilizers], [list(row) for row in z_stabilizers]
-    current_energy = get_logical_error_rate(n, current_x, current_z, lz, noise_model, num_shots)
+    current_energy, worst_flag = get_logical_error_rate(n, current_x, current_z, lz, p, num_shots)
     best_x, best_z, best_energy = current_x, current_z, current_energy
 
     energies, temperature = [current_energy], initial_temp
     temperatures = [initial_temp]
 
     for iteration in tqdm(range(max_iters)):
-        # Choose stabilizer type and shuffle one row
-        current, candidate = (current_x, [row[:] for row in current_x]) if random.random() < 0.5 else (current_z, [row[:] for row in current_z])
-        random.shuffle(candidate[random.randint(0, len(candidate) - 1)])
+        if not use_flag:
+            # Choose stabilizer type and shuffle one row at random
+            current, candidate = (current_x, [row[:] for row in current_x]) if random.random() < 0.5 else (current_z, [row[:] for row in current_z])
+            random.shuffle(candidate[random.randint(0, len(candidate) - 1)])
+
+        else:
+            # shuffle according to the worst flag
+            if worst_flag >= len(current_x):
+                current, candidate = current_z, [row[:] for row in current_z]
+                random.shuffle(candidate[worst_flag - len(current_x)])
+            else:
+                current, candidate = current_x, [row[:] for row in current_x]
+                random.shuffle(candidate[worst_flag])
 
         # Evaluate new energy
-        new_energy = get_logical_error_rate(n, candidate if current is current_x else current_x,
+        new_energy, worst_flag = get_logical_error_rate(n, candidate if current is current_x else current_x,
                                             candidate if current is current_z else current_z,
-                                            lz, noise_model, num_shots)
+                                            lz, p, num_shots)
+
+        print('worst flag:', worst_flag)
 
         # Accept based on energy difference
         if new_energy < current_energy or random.random() < np.exp((current_energy - new_energy) / temperature):
@@ -227,7 +302,7 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model, num_sh
             if new_energy < best_energy:
                 best_x, best_z, best_energy = current_x, current_z, new_energy
 
-        energies.append(current_energy)
+        energies.append(new_energy)
         temperatures.append(temperature)
 
         temperature *= cooling_rate
@@ -256,38 +331,37 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model, num_sh
 if __name__ == '__main__':
     hx,hz,lz = get_BB_code()
     n = hx.shape[1]
-    p = 0.02
-    noise_model = NoiseModel.SD6(p=p)
+    p = 0.01#0.02
     num_shots = 10000
     x_stabilizers = [list(np.where(row)[0]) for row in hx]
     z_stabilizers = [list(np.where(row)[0]) for row in hz]
 
 
-    # # surface code:
-    # z_stabilizers = [
-    #     [0,1],
-    #     [2,3],
-    #     [1,2,5,6],
-    #     [4,5,8,9],
-    #     [6,7,10,11],
-    #     [9,10,13,14],
-    #     [12,13],
-    #     [14,15]]
-    #
-    # x_stabilizers = [
-    #     [0,1,4,5],
-    #     [2,3,6,7],
-    #     [4,8],
-    #     [5,6,9,10],
-    #     [7,11],
-    #     [8,9,12,13],
-    #     [10,11,14,15]]
-    #
-    # n = 16
-    # lz = np.zeros((1, n), dtype=int)
-    # lz[0, [0,4,8,12]] = 1
+    # surface code:
+    z_stabilizers = [
+        [0,1],
+        [2,3],
+        [1,2,5,6],
+        [4,5,8,9],
+        [6,7,10,11],
+        [9,10,13,14],
+        [12,13],
+        [14,15]]
 
-    # # 3 by 3 surface code
+    x_stabilizers = [
+        [0,1,4,5],
+        [2,3,6,7],
+        [4,8],
+        [5,6,9,10],
+        [7,11],
+        [8,9,12,13],
+        [10,11,14,15]]
+
+    n = 16
+    lz = np.zeros((1, n), dtype=int)
+    lz[0, [0,4,8,12]] = 1
+
+    # 3 by 3 surface code
     # z_stabilizers = [
     #     [0,1],
     #     [1,2,4,5],
@@ -304,12 +378,27 @@ if __name__ == '__main__':
     # lz = np.zeros((1, n), dtype=int)
     # lz[0, [0,3,6]] = 1
 
+    # #steane code
+    # z_stabilizers = [
+    #     [0, 3, 5, 6],
+    #     [1, 3, 4, 6],
+    #     [2, 4, 5, 6],
+    # ]
+    # x_stabilizers = [
+    #     [0, 3, 5, 6],
+    #     [1, 3, 4, 6],
+    #     [2, 4, 5, 6],
+    # ]
+    # n=7
+    # lz = np.zeros((1, n), dtype=int)
+    # lz[0, :] = 1
+
 
 
     # logical_error_rate = get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots)
 
-    best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, noise_model,
-                                                                  num_shots,max_iters=500)
+    best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p,
+                                                                  num_shots,max_iters=150, use_flag=True)
     print(f'Best logical error rate: {best_logical_error_rate}')
     print(f'Best X stabilizers: {best_x}')
     print(f'Best Z stabilizers: {best_z}')
