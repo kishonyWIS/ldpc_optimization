@@ -192,15 +192,19 @@ def measure_z_stabilizers(z_stabilizers,n,p=0,flag=False,measurement_indexes=Non
         # flag
         if flag and p>0:
             circ.append_operation("RX", [n+1])
-            circ.append_operation("CX", [n+1,n])
         # apply cx gates
-        for j in qubits:
+        for iq, q in enumerate(qubits):
+            # flag
+            if flag and p>0 and iq == len(qubits) - 1: # before the last
+                circ.append_operation("CX", [n + 1, n])
             if p > 0:
-                circ.append_operation("DEPOLARIZE2", [j, n], p)
-            circ.append_operation("CX", [j,n])
+                circ.append_operation("DEPOLARIZE2", [q, n], p)
+            circ.append_operation("CX", [q,n])
+            # flag
+            if flag and p>0 and iq == 0: # after the first
+                circ.append_operation("CX", [n + 1, n])
         # flag
         if flag and p>0:
-            circ.append_operation("CX", [n+1,n])
             circ.append_operation("MX", [n+1])
             measurement_indexes['Z_flags'][i_stab].append(measurement_counter)
             measurement_counter += 1
@@ -218,15 +222,19 @@ def measure_x_stabilizers(x_stabilizers,n,p=0,flag=False,measurement_indexes=Non
         # flag
         if flag and p>0:
             circ.append_operation("R", [n+1])
-            circ.append_operation("CX", [n,n+1])
         # apply cx gates
-        for j in qubits:
+        for iq, q in enumerate(qubits):
+            # flag
+            if flag and p>0 and iq == len(qubits)-1: # before the last
+                circ.append_operation("CX", [n, n + 1])
             if p > 0:
-                circ.append_operation("DEPOLARIZE2", [n, j], p)
-            circ.append_operation("CX", [n,j])
+                circ.append_operation("DEPOLARIZE2", [n, q], p)
+            circ.append_operation("CX", [n,q])
+            # flag
+            if flag and p>0 and iq == 0: # after the first
+                circ.append_operation("CX", [n, n + 1])
         # flag
         if flag and p>0:
-            circ.append_operation("CX", [n,n+1])
             circ.append_operation("M", [n+1])
             measurement_indexes['X_flags'][i_stab].append(measurement_counter)
             measurement_counter += 1
@@ -337,29 +345,29 @@ if __name__ == '__main__':
     z_stabilizers = [list(np.where(row)[0]) for row in hz]
 
 
-    # surface code:
-    z_stabilizers = [
-        [0,1],
-        [2,3],
-        [1,2,5,6],
-        [4,5,8,9],
-        [6,7,10,11],
-        [9,10,13,14],
-        [12,13],
-        [14,15]]
-
-    x_stabilizers = [
-        [0,1,4,5],
-        [2,3,6,7],
-        [4,8],
-        [5,6,9,10],
-        [7,11],
-        [8,9,12,13],
-        [10,11,14,15]]
-
-    n = 16
-    lz = np.zeros((1, n), dtype=int)
-    lz[0, [0,4,8,12]] = 1
+    # # surface code:
+    # z_stabilizers = [
+    #     [0,1],
+    #     [2,3],
+    #     [1,2,5,6],
+    #     [4,5,8,9],
+    #     [6,7,10,11],
+    #     [9,10,13,14],
+    #     [12,13],
+    #     [14,15]]
+    #
+    # x_stabilizers = [
+    #     [0,1,4,5],
+    #     [2,3,6,7],
+    #     [4,8],
+    #     [5,6,9,10],
+    #     [7,11],
+    #     [8,9,12,13],
+    #     [10,11,14,15]]
+    #
+    # n = 16
+    # lz = np.zeros((1, n), dtype=int)
+    # lz[0, [0,4,8,12]] = 1
 
     # 3 by 3 surface code
     # z_stabilizers = [
@@ -398,7 +406,8 @@ if __name__ == '__main__':
     # logical_error_rate = get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots)
 
     best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p,
-                                                                  num_shots,max_iters=150, use_flag=True)
+                                                                  num_shots,max_iters=150, use_flag=True,
+                                                                  initial_temp=1., cooling_rate=0.98)
     print(f'Best logical error rate: {best_logical_error_rate}')
     print(f'Best X stabilizers: {best_x}')
     print(f'Best Z stabilizers: {best_z}')
