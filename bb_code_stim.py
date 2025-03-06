@@ -118,6 +118,7 @@ def get_BB_code():
     lz = np.load(f'lz_ell_{ell}_m_{m}_a1_{a1}_a2_{a2}_a3_{a3}_b1_{b1}_b2_{b2}_b3_{b3}.npy')
     return hx,hz,lz
 
+
 def memory_experiment_circuit(n,x_stabilizers,z_stabilizers,lz,p,x_detectors=False,z_detectors=True,cycles_before_noise=1,cycles_with_noise=1,cycles_after_noise=1):
     circ = stim.Circuit()
     measurement_counter = 0
@@ -326,11 +327,11 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initi
     ax.grid(True)
     line.set_xdata(range(len(energies)))
     line.set_ydata(energies)
-    # plot the temperature
-    plt.plot(np.array(temperatures)/10, label='Temperature/10')
+    # # plot the temperature
+    # plt.plot(np.array(temperatures)/10, label='Temperature/10')
     ax.relim()
     ax.autoscale_view()
-    plt.pause(0.01)
+    # plt.pause(0.01)
     plt.show()
 
     return best_x, best_z, best_energy
@@ -340,12 +341,12 @@ if __name__ == '__main__':
     hx,hz,lz = get_BB_code()
     n = hx.shape[1]
     p = 0.01#0.02
-    num_shots = 10000
+    num_shots = 100000
     x_stabilizers = [list(np.where(row)[0]) for row in hx]
     z_stabilizers = [list(np.where(row)[0]) for row in hz]
 
 
-    # # surface code:
+    # # surface code (rotated):
     # z_stabilizers = [
     #     [0,1],
     #     [2,3],
@@ -369,7 +370,7 @@ if __name__ == '__main__':
     # lz = np.zeros((1, n), dtype=int)
     # lz[0, [0,4,8,12]] = 1
 
-    # 3 by 3 surface code
+    # 3 by 3 surface code (rotated)
     # z_stabilizers = [
     #     [0,1],
     #     [1,2,4,5],
@@ -402,11 +403,38 @@ if __name__ == '__main__':
     # lz[0, :] = 1
 
 
+    # toric code (rotated):
+    z_stabilizers = [
+        [12,13,0,1],
+        [14,15,2,3],
+        [1,2,5,6],
+        [3,0,7,4],
+        [4,5,8,9],
+        [6,7,10,11],
+        [9,10,13,14],
+        [11,8,15,12]]
+
+    x_stabilizers = [
+        [13,14,1,2],
+        [15,12,3,0],
+        [0,1,4,5],
+        [2,3,6,7],
+        [5,6,9,10],
+        [7,4,11,8],
+        [8,9,12,13],
+        [10,11,14,15]]
+
+    n = 16
+    lz = np.zeros((2, n), dtype=int)
+    lz[0, [0,4,8,12]] = 1
+    lz[1, [0,1,2,3]] = 1
+
+
 
     # logical_error_rate = get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots)
 
     best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p,
-                                                                  num_shots,max_iters=150, use_flag=True,
+                                                                  num_shots,max_iters=30, use_flag=True,
                                                                   initial_temp=1., cooling_rate=0.98)
     print(f'Best logical error rate: {best_logical_error_rate}')
     print(f'Best X stabilizers: {best_x}')
