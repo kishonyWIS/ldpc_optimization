@@ -36,10 +36,10 @@ def get_BB_code():
     # A = x^{a_1} + y^{a_2} + y^{a_3}
     # B = y^{b_1} + x^{b_2} + x^{b_3}
 
-    # [[144,12,12]]
-    ell,m = 12,6
-    a1,a2,a3 = 3,1,2
-    b1,b2,b3 = 3,1,2
+    # # [[144,12,12]]
+    # ell,m = 12,6
+    # a1,a2,a3 = 3,1,2
+    # b1,b2,b3 = 3,1,2
 
     # [[784,24,24]]
     #ell,m = 28,14
@@ -58,9 +58,9 @@ def get_BB_code():
     # b1,b2,b3 = 0,2,7
 
     # [[108,8,10]]
-    # ell,m = 9,6
-    # a1,a2,a3 = 3,1,2
-    # b1,b2,b3 = 3,1,2
+    ell,m = 9,6
+    a1,a2,a3 = 3,1,2
+    b1,b2,b3 = 3,1,2
 
     # [[288,12,18]]
     # ell,m = 12,12
@@ -300,8 +300,13 @@ def simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p, num_shots, initi
 
         print('worst flag:', worst_flag)
 
+        # standard error
+        sigma_current = np.sqrt(current_energy * (1 - current_energy) / num_shots)
+
+        delta_energy = new_energy - current_energy
+
         # Accept based on energy difference
-        if new_energy < current_energy or random.random() < np.exp((current_energy - new_energy) / temperature):
+        if delta_energy < 0 or random.random() < np.exp(-delta_energy / (sigma_current * temperature)):
             current_energy = new_energy
             if current is current_x:
                 current_x = candidate
@@ -341,7 +346,7 @@ if __name__ == '__main__':
     hx,hz,lz = get_BB_code()
     n = hx.shape[1]
     p = 0.01#0.02
-    num_shots = 100000
+    num_shots = 30000
     x_stabilizers = [list(np.where(row)[0]) for row in hx]
     z_stabilizers = [list(np.where(row)[0]) for row in hz]
 
@@ -403,39 +408,38 @@ if __name__ == '__main__':
     # lz[0, :] = 1
 
 
-    # toric code (rotated):
-    z_stabilizers = [
-        [12,13,0,1],
-        [14,15,2,3],
-        [1,2,5,6],
-        [3,0,7,4],
-        [4,5,8,9],
-        [6,7,10,11],
-        [9,10,13,14],
-        [11,8,15,12]]
-
-    x_stabilizers = [
-        [13,14,1,2],
-        [15,12,3,0],
-        [0,1,4,5],
-        [2,3,6,7],
-        [5,6,9,10],
-        [7,4,11,8],
-        [8,9,12,13],
-        [10,11,14,15]]
-
-    n = 16
-    lz = np.zeros((2, n), dtype=int)
-    lz[0, [0,4,8,12]] = 1
-    lz[1, [0,1,2,3]] = 1
+    # # toric code (rotated):
+    # z_stabilizers = [
+    #     [12,13,0,1],
+    #     [14,15,2,3],
+    #     [1,2,5,6],
+    #     [3,0,7,4],
+    #     [4,5,8,9],
+    #     [6,7,10,11],
+    #     [9,10,13,14],
+    #     [11,8,15,12]]
+    #
+    # x_stabilizers = [
+    #     [13,14,1,2],
+    #     [15,12,3,0],
+    #     [0,1,4,5],
+    #     [2,3,6,7],
+    #     [5,6,9,10],
+    #     [7,4,11,8],
+    #     [8,9,12,13],
+    #     [10,11,14,15]]
+    # n = 16
+    # lz = np.zeros((2, n), dtype=int)
+    # lz[0, [0,4,8,12]] = 1
+    # lz[1, [0,1,2,3]] = 1
 
 
 
     # logical_error_rate = get_logical_error_rate(n,x_stabilizers,z_stabilizers,lz,noise_model,num_shots)
 
     best_x, best_z, best_logical_error_rate = simulated_annealing(x_stabilizers, z_stabilizers, n, lz, p,
-                                                                  num_shots,max_iters=30, use_flag=True,
-                                                                  initial_temp=1., cooling_rate=0.98)
+                                                                  num_shots,max_iters=50, use_flag=True,
+                                                                  initial_temp=1., cooling_rate=0.95)
     print(f'Best logical error rate: {best_logical_error_rate}')
     print(f'Best X stabilizers: {best_x}')
     print(f'Best Z stabilizers: {best_z}')
