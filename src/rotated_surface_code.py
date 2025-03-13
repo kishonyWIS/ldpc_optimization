@@ -21,7 +21,7 @@ class RotatedSurfaceCode():
 
     def init_face_checks(self):
         self.ancilla_qubits = dict()
-        x_middle, y_middle = (self.distance-1, self.distance-1)
+        _, y_middle = (self.distance-1, self.distance-1)
         q_index = len(self.data_qubits)
         check_type = ['z', 'x']
         self.z_checks = []
