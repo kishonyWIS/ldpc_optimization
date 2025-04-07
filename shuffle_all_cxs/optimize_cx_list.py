@@ -1,6 +1,6 @@
 from circuit_from_cx_list import memory_experiment_circuit_from_cx_list
 from shuffle_full_cx_list import random_legal_local_change_inplace
-from cx_list_from_stabilizers_in_sequence import setup_3_by_3_surface_code
+from cx_list_from_stabilizers_in_sequence import RotatedSurfaceCode
 from copy import deepcopy
 from typing import List, Dict, Tuple
 from draw_ordered_tanner_graph import draw_cx_list
@@ -84,11 +84,15 @@ def optimize_cx_list(
 
 
 if __name__ == '__main__':
-    cx_list, ancilla_type, data_mapping, ancilla_mapping, lz = setup_3_by_3_surface_code()
+    code = RotatedSurfaceCode(L=5)
+
+    cx_list = code.generate_cx_list()
+    ancilla_type, data_mapping, ancilla_mapping = code.build_mappings()
+    lz = code.lz
+
     optimize_cx_list(initial_cx_list = cx_list,
                      ancilla_type = ancilla_type,
                      data_mapping = data_mapping,
                      ancilla_mapping = ancilla_mapping,
                      p = 0.01,
-                     iterations = 1000
-)
+                     iterations = 1000)
