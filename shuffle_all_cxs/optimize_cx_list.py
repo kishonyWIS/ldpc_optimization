@@ -127,7 +127,7 @@ def optimize_cx_list(
         if obj_val < best_obj:
             best_obj = obj_val
             print(f"Iteration {i}: improved objective to {best_obj}")
-        if i % 10 == 0:
+        if i % 100 == 0:
             draw_cx_list(best_cx_list, ancilla_type, data_coords=data_coords, ancilla_coords=ancilla_coords)
 
     plt.figure()
@@ -154,6 +154,6 @@ if __name__ == '__main__':
                      data_mapping = data_mapping,
                      ancilla_mapping = ancilla_mapping,
                      p = 0.01,
-                     iterations = 100,
+                     iterations = 1000,
                      data_coords = data_coords,
                      ancilla_coords = ancilla_coords)

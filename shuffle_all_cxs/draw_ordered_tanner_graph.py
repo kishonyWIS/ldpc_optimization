@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+from simultaneous_scheduling import schedule_gates
 
 
 def draw_cx_list(cx_list, ancilla_type, data_coords=None, ancilla_coords=None):
@@ -28,13 +29,17 @@ def draw_cx_list(cx_list, ancilla_type, data_coords=None, ancilla_coords=None):
           Dictionary mapping each ancilla id to its (x, y) coordinate.
     """
     # Collapse the cx_list into a dictionary:
-    # key: (data, ancilla), value: list of order indices (as strings)
-    edge_dict = {}
-    for idx, (q, a) in enumerate(cx_list):
-        key = (q, a)
-        edge_dict.setdefault(key, []).append(str(idx))
-    # Build labels for each edge.
-    edge_labels = {key: ", ".join(labels) for key, labels in edge_dict.items()}
+    # # key: (data, ancilla), value: list of order indices (as strings)
+    # edge_dict = {}
+    # for idx, (q, a) in enumerate(cx_list):
+    #     key = (q, a)
+    #     edge_dict.setdefault(key, []).append(str(idx))
+    # # Build labels for each edge.
+    # edge_labels = {key: ", ".join(labels) for key, labels in edge_dict.items()}
+
+    edge_labels = schedule_gates(cx_list)
+    edge_labels = {k: str(v) for k, v in edge_labels.items()}
+
 
     # Create a simple graph and add nodes.
     G = nx.Graph()
