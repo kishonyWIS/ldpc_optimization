@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""
-stabilizer_code.py
-
-An object‐oriented module for representing stabilizer codes.
-It defines a base class, StabilizerCode, and a subclass, RotatedSurfaceCode,
-which generates the stabilizers for a rotated surface code on an L×L lattice (L odd).
-Data qubits are assumed to be ordered row‐by‐row. In the interior, every adjacent
-pair of rows and columns yields a 2×2 block with the type determined by the parity of
-(i+j). On the boundaries, two‐body stabilizers are added: Z stabilizers on the top and
-bottom edges, and X stabilizers on the left and right edges.
-
-The RotatedSurfaceCode initializer accepts the lattice dimension L and the logical
-operators lx and lz.
-"""
-
 import numpy as np
 
 
@@ -183,6 +167,51 @@ class RotatedSurfaceCode(StabilizerCode):
         x_stab, z_stab = generate_rotated_surface_code_stabilizers(L)
         super().__init__(x_stab, z_stab, lx, lz)
         self.L = L
+
+        # Automatically assign coordinates.
+        self.data_coords, self.ancilla_coords = self.assign_coordinates()
+
+    def assign_coordinates(self):
+        """
+        Compute coordinates for all qubits (data and ancilla).
+
+        Data qubits are arranged in an L×L grid in row-major order.
+        We assign coordinates as (col, L-1-row) so that the origin (0,0) is at the bottom left.
+
+        For ancillas, the coordinate is defined as the average of the coordinates of the data qubits
+        in the corresponding stabilizer.
+
+        Returns:
+          data_coords : dict
+              Maps data qubit index to (x, y) coordinate.
+          ancilla_coords : dict
+              Maps ancilla ID to (x, y) coordinate.
+        """
+        data_coords = {}
+        L = self.L
+        # Data qubits: q = i * L + j has coordinate (j, L - 1 - i).
+        for i in range(L):
+            for j in range(L):
+                q = i * L + j
+                data_coords[q] = (j, L - 1 - i)
+
+        ancilla_coords = {}
+        # For each X stabilizer ancilla:
+        for idx, support in enumerate(self.x_stabilizers):
+            ancilla_id = f"X{idx}"
+            coords = [data_coords[q] for q in support]
+            # Compute average coordinate.
+            avg_x = np.mean([c[0] for c in coords])
+            avg_y = np.mean([c[1] for c in coords])
+            ancilla_coords[ancilla_id] = (avg_x, avg_y)
+        # For each Z stabilizer ancilla:
+        for idx, support in enumerate(self.z_stabilizers):
+            ancilla_id = f"Z{idx}"
+            coords = [data_coords[q] for q in support]
+            avg_x = np.mean([c[0] for c in coords])
+            avg_y = np.mean([c[1] for c in coords])
+            ancilla_coords[ancilla_id] = (avg_x, avg_y)
+        return data_coords, ancilla_coords
 
     def __str__(self):
         s = f"RotatedSurfaceCode(L={self.L}, n={self.n})\n"

@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def draw_cx_list(cx_list, ancilla_type):
+def draw_cx_list(cx_list, ancilla_type, data_coords=None, ancilla_coords=None):
     """
     Draw the cx_list as a tripartite graph.
 
-    Nodes are divided into three columns:
+    Nodes are divided into three columns by default:
       - X ancilla nodes at x = 0.
       - Data qubits at x = 1.
       - Z ancilla nodes at x = 2.
@@ -15,11 +15,17 @@ def draw_cx_list(cx_list, ancilla_type):
     Each edge represents all CX gates between a data qubit and an ancilla.
     The edge label is a comma-separated list of the order indices from cx_list.
 
+    Optionally, custom coordinates for data qubits and ancillas can be provided.
+
     Parameters:
       cx_list : list of tuple
           Each tuple (q, a) represents a CX gate, where q is the data qubit and a is the ancilla.
       ancilla_type : dict
           Dictionary mapping each ancilla id to its type ("X" or "Z").
+      data_coords : dict, optional
+          Dictionary mapping each data qubit id to its (x, y) coordinate.
+      ancilla_coords : dict, optional
+          Dictionary mapping each ancilla id to its (x, y) coordinate.
     """
     # Collapse the cx_list into a dictionary:
     # key: (data, ancilla), value: list of order indices (as strings)
@@ -27,7 +33,7 @@ def draw_cx_list(cx_list, ancilla_type):
     for idx, (q, a) in enumerate(cx_list):
         key = (q, a)
         edge_dict.setdefault(key, []).append(str(idx))
-    # Build labels for each edge
+    # Build labels for each edge.
     edge_labels = {key: ", ".join(labels) for key, labels in edge_dict.items()}
 
     # Create a simple graph and add nodes.
@@ -52,21 +58,33 @@ def draw_cx_list(cx_list, ancilla_type):
     for (q, a), label in edge_labels.items():
         G.add_edge(q, a, label=label)
 
-    # Set x positions for each group.
-    x_positions = {"x_ancilla": 0, "data": 1, "z_ancilla": 2}
+    # If custom coordinates are not provided, compute default positions.
     pos = {}
+    if data_coords is None or ancilla_coords is None:
+        # Set default x positions for each group.
+        x_positions = {"x_ancilla": 0, "data": 1, "z_ancilla": 2}
 
-    def assign_positions(nodes, group, x_val):
-        nodes = sorted(nodes)
-        n = len(nodes)
-        # Evenly space y coordinates from 1 to -1.
-        y_vals = np.linspace(1, -1, n)
-        for i, node in enumerate(nodes):
-            pos[node] = (x_val, y_vals[i])
+        def assign_positions(nodes, x_val):
+            nodes = sorted(nodes)
+            n = len(nodes)
+            # Evenly space y coordinates from 1 to -1.
+            y_vals = np.linspace(1, -1, n)
+            return {node: (x_val, y) for node, y in zip(nodes, y_vals)}
 
-    assign_positions(x_ancillas, "x_ancilla", x_positions["x_ancilla"])
-    assign_positions(data_nodes, "data", x_positions["data"])
-    assign_positions(z_ancillas, "z_ancilla", x_positions["z_ancilla"])
+        default_data_coords = assign_positions(data_nodes, x_positions["data"])
+        default_x_coords = assign_positions(x_ancillas, x_positions["x_ancilla"])
+        default_z_coords = assign_positions(z_ancillas, x_positions["z_ancilla"])
+
+        # Use custom coordinates if provided; otherwise use defaults.
+        if data_coords is None:
+            data_coords = default_data_coords
+        if ancilla_coords is None:
+            # Merge X and Z ancilla defaults.
+            ancilla_coords = {**default_x_coords, **default_z_coords}
+
+    # Combine provided coordinates into pos.
+    pos.update(data_coords)
+    pos.update(ancilla_coords)
 
     # Define node colors based on group.
     color_map = {
@@ -117,4 +135,32 @@ if __name__ == "__main__":
     for i in range(4):
         ancilla_type[f"aZ{i}"] = "Z"
 
-    draw_cx_list(cx_list, ancilla_type)
+    # Optional: custom coordinates.
+    # For example, place data qubits on a grid (here same as default) and ancillas at fixed positions.
+    custom_data_coords = {
+        0: (1, 1),
+        1: (2, 1),
+        2: (3, 1),
+        3: (1, 0),
+        4: (2, 0),
+        5: (3, 0),
+        6: (1, -1),
+        7: (2, -1),
+        8: (3, -1)
+    }
+    custom_ancilla_coords = {
+        "aX0": (0, 0.5),
+        "aX1": (0, -0.5),
+        "aX2": (0, -1.5),
+        "aX3": (0, -2.5),
+        "aZ0": (4, 0.5),
+        "aZ1": (4, -0.5),
+        "aZ2": (4, -1.5),
+        "aZ3": (4, -2.5)
+    }
+
+    # To use the default layout, simply call:
+    # draw_cx_list(cx_list, ancilla_type)
+    #
+    # To use custom coordinates, call:
+    draw_cx_list(cx_list, ancilla_type, data_coords=custom_data_coords, ancilla_coords=custom_ancilla_coords)
