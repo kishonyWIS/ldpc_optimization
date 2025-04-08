@@ -93,9 +93,9 @@ def draw_cx_list(cx_list, ancilla_type, data_coords=None, ancilla_coords=None):
 
     # Define node colors based on group.
     color_map = {
-        "data": "lightblue",
-        "x_ancilla": "lightgreen",
-        "z_ancilla": "lightcoral"
+        "data": "lightgray",
+        "x_ancilla": "lightcoral",
+        "z_ancilla": "lightblue"
     }
     node_colors = [color_map.get(G.nodes[node]["group"], "gray") for node in G.nodes()]
 
