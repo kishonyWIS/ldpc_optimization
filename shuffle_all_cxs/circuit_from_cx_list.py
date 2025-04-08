@@ -1,6 +1,7 @@
 import stim
 import numpy as np
 from typing import List, Tuple, Dict
+from noisy_cx_circuit import add_noise_to_circuit
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
@@ -13,7 +14,8 @@ def memory_experiment_circuit_from_cx_list(
         ancilla_mapping: Dict[str, int],
         flag_mapping: Dict[str, int],
         lz: np.ndarray,
-        p: float,
+        p_cx: float,
+        p_idle: float,
         x_detectors: bool = False,
         z_detectors: bool = True,
         cycles_before_noise: int = 1,
@@ -62,6 +64,7 @@ def memory_experiment_circuit_from_cx_list(
     """
     circ = stim.Circuit()
     measurement_counter = 0
+    noisy_qubits = set(data_mapping.values()) | set(ancilla_mapping.values())
     # Record measurement indices per ancilla.
     measurement_indexes = {
         'X_syndromes': {a: [] for a, t in ancilla_type.items() if t == "X"},
@@ -85,64 +88,13 @@ def memory_experiment_circuit_from_cx_list(
     # Process each cycle.
     for cycle_no, noisy in enumerate(cycles):
         # Iterate over the global cx_list.
-        for idx, (q, a) in enumerate(cx_list):
-            # For this ancilla, determine if this is the first or last occurrence.
-            first_idx = first_occurrence[a]
-            last_idx = last_occurrence[a]
-            # On the first occurrence, reset the ancilla and prepare the flag qubit if needed.
-            if idx == first_idx:
-                if ancilla_type[a] == "X":
-                    # For X stabilizers, reset the ancilla via RX.
-                    circ.append_operation("RX", [ancilla_mapping[a]])
-                    if flag and noisy and p > 0:
-                        # Prepare the flag qubit (explicitly using flag_mapping).
-                        circ.append_operation("R", [flag_mapping[a]])
-                elif ancilla_type[a] == "Z":
-                    # For Z stabilizers, reset the ancilla via R.
-                    circ.append_operation("R", [ancilla_mapping[a]])
-                    if flag and noisy and p > 0:
-                        circ.append_operation("RX", [flag_mapping[a]])
-            # Append the CX gate.
-            dq = data_mapping[q]
-            aq = ancilla_mapping[a]
-            if ancilla_type[a] == "X":
-                # Insert a flag CX right before the last occurrence.
-                if flag and noisy and p > 0 and idx == last_idx:
-                    circ.append_operation("CX", [aq, flag_mapping[a]])
-                if noisy and p > 0:
-                    circ.append_operation("DEPOLARIZE2", [aq, dq], p)
-                circ.append_operation("CX", [aq, dq])
-                # Insert a flag CX right after the first occurrence.
-                if flag and noisy and p > 0 and idx == first_idx:
-                    circ.append_operation("CX", [aq, flag_mapping[a]])
-            elif ancilla_type[a] == "Z":
-                if flag and noisy and p > 0 and idx == last_idx:
-                    circ.append_operation("CX", [flag_mapping[a], aq])
-                if noisy and p > 0:
-                    circ.append_operation("DEPOLARIZE2", [dq, aq], p)
-                circ.append_operation("CX", [dq, aq])
-                if flag and noisy and p > 0 and idx == first_idx:
-                    circ.append_operation("CX", [flag_mapping[a], aq])
-            # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
-            if idx == last_idx:
-                if flag and noisy and p > 0:
-                    if ancilla_type[a] == "X":
-                        circ.append_operation("M", [flag_mapping[a]])
-                        measurement_indexes['X_flags'][a].append(measurement_counter)
-                        measurement_counter += 1
-                    elif ancilla_type[a] == "Z":
-                        circ.append_operation("MX", [flag_mapping[a]])
-                        measurement_indexes['Z_flags'][a].append(measurement_counter)
-                        measurement_counter += 1
-                if ancilla_type[a] == "X":
-                    circ.append_operation("MX", [aq])
-                    measurement_indexes['X_syndromes'][a].append(measurement_counter)
-                    measurement_counter += 1
-                elif ancilla_type[a] == "Z":
-                    circ.append_operation("M", [aq])
-                    measurement_indexes['Z_syndromes'][a].append(measurement_counter)
-                    measurement_counter += 1
-        # End of cycle.
+        cycle, measurement_counter = build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list,
+                                                                     data_mapping, first_occurrence, flag and noisy and p>0,
+                                                                     flag_mapping,
+                                                                     last_occurrence, measurement_counter, measurement_indexes)
+        if noisy:
+            cycle = add_noise_to_circuit(cycle, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
+        circ += cycle
 
     # Append detectors.
     # For each ancilla, add a detector comparing consecutive syndrome measurements.
@@ -197,60 +149,62 @@ def memory_experiment_circuit_from_cx_list(
     return circ, circ_without_flag_observables
 
 
-# --- Example usage ---
-if __name__ == "__main__":
-    # Define an example cx_list ordering.
-    # Here the list is for one round and may contain gates for different stabilizers interleaved.
-    cx_list = [
-        ("q1", "x1"),
-        ("q2", "x1"),
-        ("q1", "z1"),
-        ("q2", "z1"),
-    ]
-    # Define the ancilla types.
-    ancilla_type = {
-        "x1": "X",  # X stabilizer: CX applied with a1 as control.
-        "z1": "Z",  # Z stabilizer: CX applied with a2 as target.
-    }
-    # Map abstract data qubits and ancillas to physical indices.
-    data_mapping = {
-        "q1": 0,
-        "q2": 1,
-    }
-    # For ancillas, assume physical indices come after the data qubits.
-    ancilla_mapping = {
-        "x1": 2,
-        "z1": 3,
-    }
-    flag_mapping = {
-        "x1": 4,
-        "z1": 5,
-    }
-    # Example logical operators: assume two logical observables on 4 data qubits.
-    # (Each row is a binary vector indicating which data qubits are involved.)
-    lz = np.array([
-        [1, 1],  # first logical observable (could be the parity of all qubits)
-        [1, 0]  # second logical observable
-    ])
+def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data_mapping, first_occurrence, flag,
+                                    flag_mapping, last_occurrence, measurement_counter, measurement_indexes):
+    cycle = stim.Circuit()
+    for idx, (q, a) in enumerate(cx_list):
+        # For this ancilla, determine if this is the first or last occurrence.
+        first_idx = first_occurrence[a]
+        last_idx = last_occurrence[a]
+        # On the first occurrence, reset the ancilla and prepare the flag qubit if needed.
+        if idx == first_idx:
+            if ancilla_type[a] == "X":
+                # For X stabilizers, reset the ancilla via RX.
+                cycle.append_operation("RX", [ancilla_mapping[a]])
+                if flag:
+                    # Prepare the flag qubit (explicitly using flag_mapping).
+                    cycle.append_operation("R", [flag_mapping[a]])
+            elif ancilla_type[a] == "Z":
+                # For Z stabilizers, reset the ancilla via R.
+                cycle.append_operation("R", [ancilla_mapping[a]])
+                if flag:
+                    cycle.append_operation("RX", [flag_mapping[a]])
+        # Append the CX gate.
+        dq = data_mapping[q]
+        aq = ancilla_mapping[a]
+        if ancilla_type[a] == "X":
+            # Insert a flag CX right before the last occurrence.
+            if flag and idx == last_idx:
+                cycle.append_operation("CX", [aq, flag_mapping[a]])
+            cycle.append_operation("CX", [aq, dq])
+            # Insert a flag CX right after the first occurrence.
+            if flag and idx == first_idx:
+                cycle.append_operation("CX", [aq, flag_mapping[a]])
+        elif ancilla_type[a] == "Z":
+            if flag and idx == last_idx:
+                cycle.append_operation("CX", [flag_mapping[a], aq])
+            cycle.append_operation("CX", [dq, aq])
+            if flag and idx == first_idx:
+                cycle.append_operation("CX", [flag_mapping[a], aq])
+        # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
+        if idx == last_idx:
+            if flag:
+                if ancilla_type[a] == "X":
+                    cycle.append_operation("M", [flag_mapping[a]])
+                    measurement_indexes['X_flags'][a].append(measurement_counter)
+                    measurement_counter += 1
+                elif ancilla_type[a] == "Z":
+                    cycle.append_operation("MX", [flag_mapping[a]])
+                    measurement_indexes['Z_flags'][a].append(measurement_counter)
+                    measurement_counter += 1
+            if ancilla_type[a] == "X":
+                cycle.append_operation("MX", [aq])
+                measurement_indexes['X_syndromes'][a].append(measurement_counter)
+                measurement_counter += 1
+            elif ancilla_type[a] == "Z":
+                cycle.append_operation("M", [aq])
+                measurement_indexes['Z_syndromes'][a].append(measurement_counter)
+                measurement_counter += 1
+    # End of cycle.
+    return cycle, measurement_counter
 
-    # Build the circuit.
-    circ, circ_no_flags = memory_experiment_circuit_from_cx_list(
-        cx_list=cx_list,
-        ancilla_type=ancilla_type,
-        data_mapping=data_mapping,
-        ancilla_mapping=ancilla_mapping,
-        flag_mapping=flag_mapping,
-        lz=lz,
-        p=0.01,  # noise parameter
-        x_detectors=True,
-        z_detectors=True,
-        cycles_before_noise=1,
-        cycles_with_noise=2,
-        cycles_after_noise=1,
-        flag=True
-    )
-
-    print("\nCircuit without flag OBSERVABLE_INCLUDE ops:")
-    print(circ_no_flags)
-    print("Full circuit:")
-    print(circ)

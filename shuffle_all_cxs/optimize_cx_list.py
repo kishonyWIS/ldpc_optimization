@@ -54,7 +54,8 @@ def objective_logical_error_rate(cx_list: List[CXGate],
                                  data_mapping: Dict[str, int],
                                  ancilla_mapping: Dict[str, int],
                                  lz: np.ndarray,
-                                 p: float,
+                                 p_cx: float,
+                                 p_idle: float,
                                  num_shots: int = 10000) -> float:
         """
         Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
@@ -66,7 +67,8 @@ def objective_logical_error_rate(cx_list: List[CXGate],
             ancilla_mapping = ancilla_mapping,
             flag_mapping = dict(),
             lz = lz,
-            p = p,
+            p_cx = p_cx,
+            p_idle = p_idle,
             x_detectors = False,
             z_detectors = True,
             cycles_before_noise = 1,
@@ -95,10 +97,12 @@ def optimize_cx_list(
         ancilla_type: Dict[str, str],
         data_mapping: Dict[str, int],
         ancilla_mapping: Dict[str, int],
-        p: float,
+        p_cx: float,
+        p_idle: float,
         iterations: int = 100,
         data_coords: Dict[str, Tuple[int, int]] = None,
         ancilla_coords: Dict[str, Tuple[int, int]] = None,
+        num_shots: int = 10000,
 ) -> Tuple[List[CXGate], int]:
     """
     Optimize the cx_list by repeatedly applying a random legal change and evaluating the resulting circuit.
@@ -111,7 +115,7 @@ def optimize_cx_list(
     objectives_list = []
 
     best_cx_list = deepcopy(initial_cx_list)
-    best_obj, best_circ = objective_logical_error_rate(best_cx_list, ancilla_type, data_mapping, ancilla_mapping, lz, p)
+    best_obj, best_circ = objective_logical_error_rate(best_cx_list, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
     print(f"Initial objective value: {best_obj}")
     objectives_list.append(best_obj)
 
@@ -120,14 +124,13 @@ def optimize_cx_list(
         changed = random_legal_local_change_inplace(candidate, ancilla_type)
         if not changed:
             continue
-        obj_val, _ = objective_logical_error_rate(candidate, ancilla_type, data_mapping, ancilla_mapping, lz, p)
+        obj_val, _ = objective_logical_error_rate(candidate, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
         objectives_list.append(obj_val)
         if obj_val <= best_obj:
             best_cx_list = candidate
         if obj_val < best_obj:
             best_obj = obj_val
             print(f"Iteration {i}: improved objective to {best_obj}")
-        if i % 100 == 0:
             draw_cx_list(best_cx_list, ancilla_type, data_coords=data_coords, ancilla_coords=ancilla_coords)
 
     plt.figure()
@@ -140,7 +143,7 @@ def optimize_cx_list(
 
 
 if __name__ == '__main__':
-    code = RotatedSurfaceCode(L=3)
+    code = RotatedSurfaceCode(L=5)
 
     cx_list = code.generate_cx_list()
     ancilla_type, data_mapping, ancilla_mapping = code.build_mappings()
@@ -153,7 +156,8 @@ if __name__ == '__main__':
                      ancilla_type = ancilla_type,
                      data_mapping = data_mapping,
                      ancilla_mapping = ancilla_mapping,
-                     p = 0.01,
+                     p_cx = 0.01,
+                     p_idle = 0.001,
                      iterations = 1000,
                      data_coords = data_coords,
                      ancilla_coords = ancilla_coords)
