@@ -62,7 +62,6 @@ def memory_experiment_circuit_from_cx_list(
          - circ is the full Stim circuit including OBSERVABLE_INCLUDE operations for flag observables.
          - circ_without_flag_observables is a copy of the circuit before the OBSERVABLE_INCLUDE ops.
     """
-    circ = stim.Circuit()
     measurement_counter = 0
     noisy_qubits = set(data_mapping.values()) | set(ancilla_mapping.values())
     # Record measurement indices per ancilla.
@@ -81,19 +80,33 @@ def memory_experiment_circuit_from_cx_list(
     last_occurrence = {a: max(pos_list) for a, pos_list in ancilla_positions.items()}
 
     # Define cycles: a list of booleans indicating whether noise is active.
-    cycles = ([False] * cycles_before_noise +
+    cycles_have_noise = ([False] * cycles_before_noise +
               [True] * cycles_with_noise +
               [False] * cycles_after_noise)
 
     # Process each cycle.
-    for cycle_no, noisy in enumerate(cycles):
+    all_cycles = []
+    for cycle_no, noisy in enumerate(cycles_have_noise):
         # Iterate over the global cx_list.
         cycle, measurement_counter = build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list,
-                                                                     data_mapping, first_occurrence, flag and noisy and p>0,
+                                                                     data_mapping, first_occurrence, flag and noisy and (p_cx>0 or p_idle>0),
                                                                      flag_mapping,
                                                                      last_occurrence, measurement_counter, measurement_indexes)
-        if noisy:
-            cycle = add_noise_to_circuit(cycle, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
+        all_cycles.append(cycle)
+
+    # Concatenate all cycles into a single circuit.
+    circ = stim.Circuit()
+    # add first noiseless cycles
+    for cycle in all_cycles[:cycles_before_noise]:
+        circ += cycle
+    noisy_part_of_circ = stim.Circuit()
+    # add noisy cycles
+    for cycle in all_cycles[cycles_before_noise: cycles_before_noise+cycles_with_noise]:
+        noisy_part_of_circ += cycle
+    noisy_part_of_circ = add_noise_to_circuit(noisy_part_of_circ, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
+    circ += noisy_part_of_circ
+    # add last noiseless cycles
+    for cycle in all_cycles[cycles_before_noise+cycles_with_noise:]:
         circ += cycle
 
     # Append detectors.
