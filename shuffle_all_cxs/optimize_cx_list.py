@@ -8,10 +8,18 @@ import stim
 import sinter
 import numpy as np
 from stimbposd import SinterDecoder_BPOSD, sinter_decoders
+import cProfile
+import pstats
+from io import StringIO  # Ensure StringIO is imported correctly
 import matplotlib.pyplot as plt
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
+
+custom_decoders = {'bposd': SinterDecoder_BPOSD(
+    max_bp_iters=1000,
+    osd_order=30,
+)}
 
 
 def objective(cx_list: List[CXGate],
@@ -86,10 +94,10 @@ def objective_logical_error_rate(cx_list: List[CXGate],
     )
 
     stats = sinter.collect(tasks=[task], num_workers=10,
-                           max_shots=10_000,
+                           max_shots=num_shots,
                            max_errors=100,
                            decoders=['bposd'],
-                           custom_decoders=sinter_decoders(),
+                           custom_decoders=custom_decoders,
                            )
     for stat in stats:
         logical_error_rate = stat.errors / stat.shots
@@ -107,7 +115,7 @@ def optimize_cx_list(
         ancilla_mapping: Dict[str, int],
         p_cx: float,
         p_idle: float,
-        iterations: int = 100,
+        iterations: int = 10,
         data_coords: Dict[str, Tuple[int, int]] = None,
         ancilla_coords: Dict[str, Tuple[int, int]] = None,
         num_shots: int = 10000,
@@ -163,12 +171,28 @@ if __name__ == '__main__':
     data_coords = code.data_coords
     ancilla_coords = code.ancilla_coords
 
+    profiler = cProfile.Profile()
+    profiler.enable()
+
     optimize_cx_list(initial_cx_list=cx_list,
                      ancilla_type=ancilla_type,
                      data_mapping=data_mapping,
                      ancilla_mapping=ancilla_mapping,
-                     p_cx=0.01,
+                     p_cx=0.001,
                      p_idle=0.001,
-                     iterations=1000,
+                     iterations=10,
                      data_coords=data_coords,
-                     ancilla_coords=ancilla_coords)
+                     ancilla_coords=ancilla_coords,
+                     num_shots=10_000)
+
+    profiler.disable()
+    s = StringIO()
+    ps = pstats.Stats(profiler, stream=s).sort_stats('time')
+    with open('profiling_stats_per_call.txt', 'w') as f:  # Ensure the file path is valid
+        ps.print_stats()
+        f.write(s.getvalue())
+
+    ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+    with open('profiling_stats_cumulative.txt', 'w') as f:  # Ensure the file path is valid
+        ps.print_stats()
+        f.write(s.getvalue())
