@@ -101,10 +101,12 @@ def objective_logical_error_rate(cx_list: List[CXGate],
                            )
     for stat in stats:
         logical_error_rate = stat.errors / stat.shots
+        logical_error_rate_error = np.sqrt(
+            logical_error_rate * (1 - logical_error_rate) / stat.shots)
         break
     else:
         logical_error_rate = 0.0
-
+    return logical_error_rate, logical_error_rate_error, circ
     return logical_error_rate, circ
 
 
@@ -129,21 +131,23 @@ def optimize_cx_list(
     Returns the best cx_list found and its objective value.
     """
     objectives_list = []
+    objectives_error = []
 
     best_cx_list = deepcopy(initial_cx_list)
-    best_obj, best_circ = objective_logical_error_rate(
+    best_obj, best_obj_error, best_circ = objective_logical_error_rate(
         best_cx_list, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
     print(f"Initial objective value: {best_obj}")
     objectives_list.append(best_obj)
-
+    objectives_error.append(best_obj_error)
     for i in range(iterations):
         candidate = deepcopy(best_cx_list)
         changed = random_legal_local_change_inplace(candidate, ancilla_type)
         if not changed:
             continue
-        obj_val, _ = objective_logical_error_rate(
+        obj_val, obj_error, _ = objective_logical_error_rate(
             candidate, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
         objectives_list.append(obj_val)
+        objectives_error.append(obj_error)
         if obj_val <= best_obj:
             best_cx_list = candidate
         if obj_val < best_obj:
@@ -153,7 +157,12 @@ def optimize_cx_list(
                          data_coords=data_coords, ancilla_coords=ancilla_coords)
 
     plt.figure()
-    plt.plot(objectives_list)
+    plt.errorbar(range(len(objectives_list)),
+                 objectives_list,
+                 yerr=objectives_error,
+                 fmt='o',
+                 label='Objective Value')
+
     plt.xlabel('Iteration')
     plt.ylabel('Objective Value')
     plt.show()
