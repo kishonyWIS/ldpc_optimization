@@ -7,10 +7,10 @@ from draw_ordered_tanner_graph import draw_cx_list
 import stim
 import sinter
 import numpy as np
-from stimbposd import SinterDecoder_BPOSD, sinter_decoders
+from stimbposd import SinterDecoder_BPOSD
 import cProfile
 import pstats
-from io import StringIO  # Ensure StringIO is imported correctly
+from io import StringIO
 import matplotlib.pyplot as plt
 
 # A CX gate is represented as a tuple (q, a)
@@ -18,7 +18,7 @@ CXGate = Tuple[str, str]
 
 custom_decoders = {'bposd': SinterDecoder_BPOSD(
     max_bp_iters=1000,
-    osd_order=30,
+    osd_order=5,
 )}
 
 
@@ -106,7 +106,6 @@ def objective_logical_error_rate(cx_list: List[CXGate],
     else:
         logical_error_rate = 0.0
     return logical_error_rate, logical_error_rate_error, circ
-    return logical_error_rate, circ
 
 
 def optimize_cx_list(
@@ -114,6 +113,7 @@ def optimize_cx_list(
         ancilla_type: Dict[str, str],
         data_mapping: Dict[str, int],
         ancilla_mapping: Dict[str, int],
+        lz: np.ndarray,
         p_cx: float,
         p_idle: float,
         iterations: int = 10,
