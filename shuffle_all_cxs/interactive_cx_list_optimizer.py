@@ -6,7 +6,7 @@ import numpy as np
 from draw_ordered_tanner_graph import draw_cx_list
 from optimize_cx_list import CXGate
 from circuit_from_cx_list import memory_experiment_circuit_from_cx_list
-from stimbposd import SinterDecoder_BPOSD
+from ldpc.sinter_decoders import SinterBpOsdDecoder
 from shuffle_full_cx_list import random_legal_local_change_inplace
 import matplotlib.pyplot as plt
 
@@ -63,7 +63,11 @@ class InteractiveCxListOptimizer:
             cycles_after_noise=1,
             flag=False
         )
-
+        # print(len(circ.search_for_undetectable_logical_errors(
+        #     dont_explore_detection_event_sets_with_size_above=4,
+        #     dont_explore_edges_with_degree_above=4,
+        #     dont_explore_edges_increasing_symptom_degree=True,
+        # )), 'distance')
         task = sinter.Task(
             circuit=circ,
         )
@@ -102,8 +106,12 @@ class InteractiveCxListOptimizer:
                          max_num_shots: int,
                          max_num_errors: int,
                          draw: bool = False):
-        self.custom_decoders = {'bposd': SinterDecoder_BPOSD(
-            max_bp_iters=max_bp_iterations, osd_order=osd_order)}
+        self.custom_decoders = {
+            "bposd": SinterBpOsdDecoder(
+                max_iter=max_bp_iterations,
+                osd_order=osd_order,
+                osd_method='OSD_E'
+            )}
 
         if not self.optimizer_history:
             self.start_optimization(num_shots=max_num_shots,
@@ -119,7 +127,6 @@ class InteractiveCxListOptimizer:
                 candidate, max_num_shots=max_num_shots, max_num_errors=max_num_errors))
             if self.optimizer_history[-1].objective_value <= self.best_obj:
                 self.best_cx_list = candidate
-                print("here")
             if self.optimizer_history[-1].objective_value < self.best_obj:
                 self.best_obj = self.optimizer_history[-1].objective_value
                 print(f"Iteration {i}: improved objective to {self.best_obj}")
