@@ -31,6 +31,8 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
     """
     new_circ = stim.Circuit()
 
+    total_idling_time = 0
+
     # Collect all qubits present in the circuit.
     all_qubits = set()
     for op in circ_in:
@@ -49,6 +51,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 idle_time = t - qubits_last_used[q] - 1
                 if q in noisy_qubits and idle_time > 0 and p_idle > 0:
                     new_circ.append_operation("DEPOLARIZE1", target, idle_time*p_idle)
+                    total_idling_time += idle_time
                 new_circ.append_operation(op.name, target)
                 qubits_last_used[q] = t
         elif op.name == "CX":
@@ -61,6 +64,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                     idle_time = t - qubits_last_used[q] - 1
                     if q in noisy_qubits and idle_time > 0 and p_idle > 0:
                         new_circ.append_operation("DEPOLARIZE1", [q], idle_time*p_idle)
+                        total_idling_time += idle_time
                 # After a CX, if both qubits are noisy, add two-qubit noise.
                 if q_c in noisy_qubits and q_t in noisy_qubits and p_cx > 0:
                     new_circ.append_operation("DEPOLARIZE2", [q_c, q_t], p_cx)
@@ -69,6 +73,8 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 qubits_last_used[q_t] = t
         else:
             raise NotImplementedError
+
+    print(f"Total idling time: {total_idling_time}")
 
     return new_circ
 

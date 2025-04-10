@@ -33,7 +33,7 @@ def objective(cx_list: List[CXGate],
         x_detectors = False,
         z_detectors = True,
         cycles_before_noise = 1,
-        cycles_with_noise = 2,
+        cycles_with_noise = 5,
         cycles_after_noise = 1,
         flag = False
     )
@@ -72,7 +72,7 @@ def objective_logical_error_rate(cx_list: List[CXGate],
             x_detectors = False,
             z_detectors = True,
             cycles_before_noise = 1,
-            cycles_with_noise = 2,
+            cycles_with_noise = 5,
             cycles_after_noise = 1,
             flag = False
         )
@@ -102,7 +102,7 @@ def optimize_cx_list(
         iterations: int = 100,
         data_coords: Dict[str, Tuple[int, int]] = None,
         ancilla_coords: Dict[str, Tuple[int, int]] = None,
-        num_shots: int = 10000,
+        num_shots: int = 100000,
 ) -> Tuple[List[CXGate], int]:
     """
     Optimize the cx_list by repeatedly applying a random legal change and evaluating the resulting circuit.
@@ -156,8 +156,8 @@ if __name__ == '__main__':
                      ancilla_type = ancilla_type,
                      data_mapping = data_mapping,
                      ancilla_mapping = ancilla_mapping,
-                     p_cx = 0.01,
-                     p_idle = 0.001,
+                     p_cx = 0.001,
+                     p_idle = 0.0001,
                      iterations = 1000,
                      data_coords = data_coords,
                      ancilla_coords = ancilla_coords)
