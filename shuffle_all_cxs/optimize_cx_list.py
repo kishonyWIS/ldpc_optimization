@@ -68,29 +68,28 @@ def objective_logical_error_rate(cx_list: List[CXGate],
                                  p_cx: float,
                                  p_idle: float,
                                  num_shots: int = 10000) -> float:
-        """
-        Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
-        """
-        _, circ = memory_experiment_circuit_from_cx_list(
-            cx_list = cx_list,
-            ancilla_type = ancilla_type,
-            data_mapping = data_mapping,
-            ancilla_mapping = ancilla_mapping,
-            flag_mapping = dict(),
-            lz = lz,
-            p_cx = p_cx,
-            p_idle = p_idle,
-            x_detectors = False,
-            z_detectors = True,
-            cycles_before_noise = 1,
-            cycles_with_noise = 5,
-            cycles_after_noise = 1,
-            flag = False
-        )
+    """
+    Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
+    """
+    _, circ = memory_experiment_circuit_from_cx_list(
+        cx_list = cx_list,
+        ancilla_type = ancilla_type,
+        data_mapping = data_mapping,
+        ancilla_mapping = ancilla_mapping,
+        flag_mapping = dict(),
+        lz = lz,
+        p_cx = p_cx,
+        p_idle = p_idle,
+        x_detectors = False,
+        z_detectors = True,
+        cycles_before_noise = 1,
+        cycles_with_noise = 5,
+        cycles_after_noise = 1,
+        flag = False
+    )
 
     task = sinter.Task(
         circuit=circ,
-
     )
 
     stats = sinter.collect(tasks=[task], num_workers=10,
@@ -187,8 +186,8 @@ if __name__ == '__main__':
                      ancilla_type=ancilla_type,
                      data_mapping=data_mapping,
                      ancilla_mapping=ancilla_mapping,
-                     p_cx=0.001,
-                     p_idle=0.001,
+                     p_cx=0.01,
+                     p_idle=0,
                      iterations=10,
                      data_coords=data_coords,
                      ancilla_coords=ancilla_coords,
