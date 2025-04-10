@@ -5,12 +5,22 @@ from copy import deepcopy
 from typing import List, Dict, Tuple
 from draw_ordered_tanner_graph import draw_cx_list
 import stim
+import sinter
 import numpy as np
-from stimbposd import BPOSD
+from stimbposd import SinterDecoder_BPOSD, sinter_decoders
+import cProfile
+import pstats
+from io import StringIO  # Ensure StringIO is imported correctly
 import matplotlib.pyplot as plt
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
+
+custom_decoders = {'bposd': SinterDecoder_BPOSD(
+    max_bp_iters=1000,
+    osd_order=30,
+)}
+
 
 def objective(cx_list: List[CXGate],
               ancilla_type: Dict[str, str],
@@ -49,6 +59,7 @@ def objective(cx_list: List[CXGate],
 
     return len(errors), circ
 
+
 def objective_logical_error_rate(cx_list: List[CXGate],
                                  ancilla_type: Dict[str, str],
                                  data_mapping: Dict[str, int],
@@ -77,19 +88,26 @@ def objective_logical_error_rate(cx_list: List[CXGate],
             flag = False
         )
 
-        sampler = circ.compile_detector_sampler()
-        syndromes, observables = sampler.sample(num_shots, separate_observables=True)
+    task = sinter.Task(
+        circuit=circ,
 
-        observables = observables[:, :lz.shape[0]]
+    )
 
-        decoder = BPOSD(
-            circ.detector_error_model(), max_bp_iters=20)
-
-        predicted_observables = decoder.decode_batch(syndromes)
-        mistakes = np.any(predicted_observables != observables, axis=1)
-        num_mistakes = np.sum(mistakes)
-
-        return num_mistakes / num_shots, circ
+    stats = sinter.collect(tasks=[task], num_workers=10,
+                           max_shots=num_shots,
+                           max_errors=100,
+                           decoders=['bposd'],
+                           custom_decoders=custom_decoders,
+                           )
+    for stat in stats:
+        logical_error_rate = stat.errors / stat.shots
+        logical_error_rate_error = np.sqrt(
+            logical_error_rate * (1 - logical_error_rate) / stat.shots)
+        break
+    else:
+        logical_error_rate = 0.0
+    return logical_error_rate, logical_error_rate_error, circ
+    return logical_error_rate, circ
 
 
 def optimize_cx_list(
@@ -99,10 +117,10 @@ def optimize_cx_list(
         ancilla_mapping: Dict[str, int],
         p_cx: float,
         p_idle: float,
-        iterations: int = 100,
+        iterations: int = 10,
         data_coords: Dict[str, Tuple[int, int]] = None,
         ancilla_coords: Dict[str, Tuple[int, int]] = None,
-        num_shots: int = 100000,
+        num_shots: int = 10000,
 ) -> Tuple[List[CXGate], int]:
     """
     Optimize the cx_list by repeatedly applying a random legal change and evaluating the resulting circuit.
@@ -113,28 +131,38 @@ def optimize_cx_list(
     Returns the best cx_list found and its objective value.
     """
     objectives_list = []
+    objectives_error = []
 
     best_cx_list = deepcopy(initial_cx_list)
-    best_obj, best_circ = objective_logical_error_rate(best_cx_list, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
+    best_obj, best_obj_error, best_circ = objective_logical_error_rate(
+        best_cx_list, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
     print(f"Initial objective value: {best_obj}")
     objectives_list.append(best_obj)
-
+    objectives_error.append(best_obj_error)
     for i in range(iterations):
         candidate = deepcopy(best_cx_list)
         changed = random_legal_local_change_inplace(candidate, ancilla_type)
         if not changed:
             continue
-        obj_val, _ = objective_logical_error_rate(candidate, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
+        obj_val, obj_error, _ = objective_logical_error_rate(
+            candidate, ancilla_type, data_mapping, ancilla_mapping, lz, p_cx, p_idle, num_shots=num_shots)
         objectives_list.append(obj_val)
+        objectives_error.append(obj_error)
         if obj_val <= best_obj:
             best_cx_list = candidate
         if obj_val < best_obj:
             best_obj = obj_val
             print(f"Iteration {i}: improved objective to {best_obj}")
-            draw_cx_list(best_cx_list, ancilla_type, data_coords=data_coords, ancilla_coords=ancilla_coords)
+            draw_cx_list(best_cx_list, ancilla_type,
+                         data_coords=data_coords, ancilla_coords=ancilla_coords)
 
     plt.figure()
-    plt.plot(objectives_list)
+    plt.errorbar(range(len(objectives_list)),
+                 objectives_list,
+                 yerr=objectives_error,
+                 fmt='o',
+                 label='Objective Value')
+
     plt.xlabel('Iteration')
     plt.ylabel('Objective Value')
     plt.show()
@@ -152,12 +180,28 @@ if __name__ == '__main__':
     data_coords = code.data_coords
     ancilla_coords = code.ancilla_coords
 
-    optimize_cx_list(initial_cx_list = cx_list,
-                     ancilla_type = ancilla_type,
-                     data_mapping = data_mapping,
-                     ancilla_mapping = ancilla_mapping,
-                     p_cx = 0.001,
-                     p_idle = 0.0001,
-                     iterations = 1000,
-                     data_coords = data_coords,
-                     ancilla_coords = ancilla_coords)
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    optimize_cx_list(initial_cx_list=cx_list,
+                     ancilla_type=ancilla_type,
+                     data_mapping=data_mapping,
+                     ancilla_mapping=ancilla_mapping,
+                     p_cx=0.001,
+                     p_idle=0.001,
+                     iterations=10,
+                     data_coords=data_coords,
+                     ancilla_coords=ancilla_coords,
+                     num_shots=10_000)
+
+    profiler.disable()
+    s = StringIO()
+    ps = pstats.Stats(profiler, stream=s).sort_stats('time')
+    with open('profiling_stats_per_call.txt', 'w') as f:  # Ensure the file path is valid
+        ps.print_stats()
+        f.write(s.getvalue())
+
+    ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+    with open('profiling_stats_cumulative.txt', 'w') as f:  # Ensure the file path is valid
+        ps.print_stats()
+        f.write(s.getvalue())
