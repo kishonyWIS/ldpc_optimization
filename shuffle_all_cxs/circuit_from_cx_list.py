@@ -22,7 +22,7 @@ def memory_experiment_circuit_from_cx_list(
         cycles_with_noise: int = 1,
         cycles_after_noise: int = 1,
         flag: bool = True
-) -> Tuple[stim.Circuit, stim.Circuit]:
+) -> Tuple[stim.Circuit, stim.Circuit, int]:
     """
     Build a Stim circuit from a global cx_list ordering (assumed to be the ordering for one measurement round)
     and then apply it repeatedly for multiple cycles.
@@ -103,7 +103,7 @@ def memory_experiment_circuit_from_cx_list(
     # add noisy cycles
     for cycle in all_cycles[cycles_before_noise: cycles_before_noise+cycles_with_noise]:
         noisy_part_of_circ += cycle
-    noisy_part_of_circ = add_noise_to_circuit(noisy_part_of_circ, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
+    noisy_part_of_circ, idle_time = add_noise_to_circuit(noisy_part_of_circ, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
     circ += noisy_part_of_circ
     # add last noiseless cycles
     for cycle in all_cycles[cycles_before_noise+cycles_with_noise:]:
@@ -159,7 +159,7 @@ def memory_experiment_circuit_from_cx_list(
                                   observable_index)
             observable_index += 1
 
-    return circ, circ_without_flag_observables
+    return circ, circ_without_flag_observables, idle_time
 
 
 def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data_mapping, first_occurrence, flag,

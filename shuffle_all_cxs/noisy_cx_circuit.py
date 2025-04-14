@@ -49,7 +49,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 t = qubits_last_used[q] + 1
                 # For each noisy qubit, add idling noise for idle_time = t - last_used - 1.
                 idle_time = t - qubits_last_used[q] - 1
-                if q in noisy_qubits and idle_time > 0 and p_idle > 0:
+                if q in noisy_qubits and idle_time > 0 and p_idle > 0 and qubits_last_used[q] > 0:
                     new_circ.append_operation("DEPOLARIZE1", target, idle_time*p_idle)
                     total_idling_time += idle_time
                 new_circ.append_operation(op.name, target)
@@ -62,7 +62,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 t = max(qubits_last_used[q_c], qubits_last_used[q_t]) + 1
                 for q in [q_c, q_t]:
                     idle_time = t - qubits_last_used[q] - 1
-                    if q in noisy_qubits and idle_time > 0 and p_idle > 0:
+                    if q in noisy_qubits and idle_time > 0 and p_idle > 0 and qubits_last_used[q] > 0:
                         new_circ.append_operation("DEPOLARIZE1", [q], idle_time*p_idle)
                         total_idling_time += idle_time
                 # After a CX, if both qubits are noisy, add two-qubit noise.
@@ -76,7 +76,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
 
     print(f"Total idling time: {total_idling_time}")
 
-    return new_circ
+    return new_circ, total_idling_time
 
 
 # --- Example usage ---
