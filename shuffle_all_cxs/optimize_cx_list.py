@@ -7,7 +7,7 @@ from draw_ordered_tanner_graph import draw_cx_list
 import stim
 import sinter
 import numpy as np
-from stimbposd import SinterDecoder_BPOSD
+# from stimbposd import SinterDecoder_BPOSD
 import cProfile
 import pstats
 from io import StringIO
@@ -16,10 +16,10 @@ import matplotlib.pyplot as plt
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
 
-custom_decoders = {'bposd': SinterDecoder_BPOSD(
-    max_bp_iters=1000,
-    osd_order=5,
-)}
+# custom_decoders = {'bposd': SinterDecoder_BPOSD(
+#     max_bp_iters=1000,
+#     osd_order=5,
+# )}
 
 
 def objective(cx_list: List[CXGate],
@@ -32,7 +32,7 @@ def objective(cx_list: List[CXGate],
     Build a circuit from the given cx_list and return an objective value computed as the number of
     undetectable logical errors found by Stim's search_for_undetectable_logical_errors function.
     """
-    _, circ, idling_time = memory_experiment_circuit_from_cx_list(
+    _, circ = memory_experiment_circuit_from_cx_list(
         cx_list = cx_list,
         ancilla_type = ancilla_type,
         data_mapping = data_mapping,
@@ -43,7 +43,7 @@ def objective(cx_list: List[CXGate],
         x_detectors = False,
         z_detectors = True,
         cycles_before_noise = 1,
-        cycles_with_noise = 2,
+        cycles_with_noise = 5,
         cycles_after_noise = 1,
         flag = False
     )
@@ -71,7 +71,7 @@ def objective_logical_error_rate(cx_list: List[CXGate],
     """
     Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
     """
-    _, circ, idling_time = memory_experiment_circuit_from_cx_list(
+    _, circ = memory_experiment_circuit_from_cx_list(
         cx_list = cx_list,
         ancilla_type = ancilla_type,
         data_mapping = data_mapping,
@@ -83,7 +83,7 @@ def objective_logical_error_rate(cx_list: List[CXGate],
         x_detectors = False,
         z_detectors = True,
         cycles_before_noise = 1,
-        cycles_with_noise = 2,
+        cycles_with_noise = 5,
         cycles_after_noise = 1,
         flag = False
     )
@@ -170,7 +170,7 @@ def optimize_cx_list(
 
 
 if __name__ == '__main__':
-    code = RotatedSurfaceCode(L=3)
+    code = RotatedSurfaceCode(L=5)
 
     cx_list = code.generate_cx_list()
     ancilla_type, data_mapping, ancilla_mapping = code.build_mappings()
@@ -185,11 +185,10 @@ if __name__ == '__main__':
     optimize_cx_list(initial_cx_list=cx_list,
                      ancilla_type=ancilla_type,
                      data_mapping=data_mapping,
-                     lz=lz,
                      ancilla_mapping=ancilla_mapping,
                      p_cx=0.01,
-                     p_idle=0.01,
-                     iterations=1000,
+                     p_idle=0,
+                     iterations=10,
                      data_coords=data_coords,
                      ancilla_coords=ancilla_coords,
                      num_shots=10_000)
