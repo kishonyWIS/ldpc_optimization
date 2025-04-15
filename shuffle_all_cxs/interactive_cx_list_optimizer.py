@@ -7,6 +7,7 @@ from optimize_cx_list import CXGate
 from circuit_from_cx_list import memory_experiment_circuit_from_cx_list
 from ldpc.sinter_decoders import SinterBpOsdDecoder
 from shuffle_full_cx_list import random_legal_local_change_inplace
+from permute_single_stabilizer import permute_single_stabilizer_inplace
 import matplotlib.pyplot as plt
 
 
@@ -155,7 +156,8 @@ class InteractiveCxListOptimizer:
                          iterations: int,
                          max_num_shots: int,
                          max_num_errors: int,
-                         draw: bool = False):
+                         draw: bool = False,
+                         step_type = 'edge_pair'):
         self.custom_decoders = {
             "bposd": SinterBpOsdDecoder(
                 max_iter=max_bp_iterations,
@@ -170,7 +172,13 @@ class InteractiveCxListOptimizer:
 
         for i in range(iterations):
             candidate = deepcopy(self.best_cx_list)
-            changed = random_legal_local_change_inplace(candidate, self.ancilla_type)
+            if step_type == 'edge_pair':
+                changed = random_legal_local_change_inplace(candidate, self.ancilla_type)
+            elif step_type == 'single_stabilizer':
+                permute_single_stabilizer_inplace(candidate)
+                changed = True
+            else:
+                raise ValueError("step_type must be 'edge_pair' or 'single_stabilizer'")
 
             if not changed:
                 continue
