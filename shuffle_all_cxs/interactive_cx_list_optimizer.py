@@ -47,7 +47,7 @@ class InteractiveCxListOptimizer:
         """
         Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
         """
-        _, circ = memory_experiment_circuit_from_cx_list(
+        _, circ, idle_time = memory_experiment_circuit_from_cx_list(
             cx_list=cx_list,
             ancilla_type=self.ancilla_type,
             data_mapping=self.data_mapping,
@@ -130,10 +130,9 @@ class InteractiveCxListOptimizer:
             if self.optimizer_history[-1].objective_value < self.best_obj:
                 self.best_obj = self.optimizer_history[-1].objective_value
                 print(f"Iteration {i}: improved objective to {self.best_obj}")
-#                if draw == True:
-
- #                   draw_cx_list(self.best_cx_list, self.ancilla_type,
-  #                               data_coords=self.data_coords, ancilla_coords=self.ancilla_coords)
+                # if draw:
+                #     draw_cx_list(self.best_cx_list, self.ancilla_type,
+                #                  data_coords=self.data_coords, ancilla_coords=self.ancilla_coords)
 
             # keep the option to run it as a script directly
 
