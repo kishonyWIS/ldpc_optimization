@@ -13,11 +13,11 @@ def memory_experiment_circuit_from_cx_list(
         data_mapping: Dict[str, int],
         ancilla_mapping: Dict[str, int],
         flag_mapping: Dict[str, int],
-        lz: np.ndarray,
+        logicals: np.ndarray,
+        logical_type: str,
         p_cx: float,
         p_idle: float,
-        x_detectors: bool = False,
-        z_detectors: bool = True,
+        both_detectors: bool = False,
         cycles_before_noise: int = 1,
         cycles_with_noise: int = 1,
         cycles_after_noise: int = 1,
@@ -62,6 +62,8 @@ def memory_experiment_circuit_from_cx_list(
          - circ is the full Stim circuit including OBSERVABLE_INCLUDE operations for flag observables.
          - circ_without_flag_observables is a copy of the circuit before the OBSERVABLE_INCLUDE ops.
     """
+    data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
+    n = len(data_indices)
     measurement_counter = 0
     noisy_qubits = set(data_mapping.values()) | set(ancilla_mapping.values())
     # Record measurement indices per ancilla.
@@ -96,6 +98,8 @@ def memory_experiment_circuit_from_cx_list(
 
     # Concatenate all cycles into a single circuit.
     circ = stim.Circuit()
+    # initialize data qubits in logical basis
+    circ.append_operation('R' if logical_type == "Z" else 'RX', data_indices)
     # add first noiseless cycles
     for cycle in all_cycles[:cycles_before_noise]:
         circ += cycle
@@ -111,14 +115,14 @@ def memory_experiment_circuit_from_cx_list(
 
     # Append detectors.
     # For each ancilla, add a detector comparing consecutive syndrome measurements.
-    if x_detectors:
+    if logical_type == "X" or both_detectors:
         for a, meas_list in measurement_indexes['X_syndromes'].items():
             for cycle in range(len(meas_list) - 1):
                 rec_targets = [stim.target_rec(meas_list[cycle] - measurement_counter),
                                stim.target_rec(meas_list[cycle + 1] - measurement_counter)]
                 # Label detectors for X stabilizers (the label here is just an example).
                 circ.append_operation("DETECTOR", rec_targets, [cycle, int(a[1:]), 0])
-    if z_detectors:
+    if logical_type == "Z" or both_detectors:
         for a, meas_list in measurement_indexes['Z_syndromes'].items():
             for cycle in range(len(meas_list) - 1):
                 rec_targets = [stim.target_rec(meas_list[cycle] - measurement_counter),
@@ -126,14 +130,11 @@ def memory_experiment_circuit_from_cx_list(
                 circ.append_operation("DETECTOR", rec_targets, [cycle, int(a[1:]), 1])
 
     # Append final data measurements.
-    data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
-    n = len(data_indices)
-    circ.append_operation("M", data_indices)
-    measurement_counter += len(data_indices)
+    circ.append_operation("M" if logical_type == "Z" else "MX", data_indices)
+    measurement_counter += n
 
     # Append logical observables.
-    measurement_counter += n
-    for i_logical, logical in enumerate(lz):
+    for i_logical, logical in enumerate(logicals):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
         circ.append_operation("OBSERVABLE_INCLUDE",
                               [stim.target_rec(i - n) for i in qubits_in_logical],
@@ -143,7 +144,7 @@ def memory_experiment_circuit_from_cx_list(
     circ_without_flag_observables = circ.copy()
 
     # add flag observables
-    observable_index = lz.shape[0]
+    observable_index = logicals.shape[0]
     for i_flag, indexes_of_measurements in measurement_indexes['X_flags'].items():
         for i_cycle in range(len(indexes_of_measurements)):
             indexes = [ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
