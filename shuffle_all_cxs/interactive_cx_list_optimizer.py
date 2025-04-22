@@ -12,10 +12,11 @@ import matplotlib.pyplot as plt
 
 
 class OptimizerStatus:
-    def __init__(self, cx_list: List, objective_value: float, objective_error: float):
+    def __init__(self, cx_list: List, objective_value: float, objective_error: float, worst_flag: int = None):
         self.cx_list = cx_list
         self.objective_value = objective_value
         self.objective_error = objective_error
+        self.worst_flag = worst_flag
 
 
 class InteractiveCxListOptimizer:
@@ -61,9 +62,11 @@ class InteractiveCxListOptimizer:
         self.p_idle = p_idle
         self.cycles_with_noise = cycles_with_noise
 
-    def measure_logical_error_rate(self, cx_list: List[CXGate],
+    def measure_logical_error_rate(self,
+                                   cx_list: List[CXGate],
                                    max_num_shots: int,
-                                   max_num_errors: int) -> OptimizerStatus:
+                                   max_num_errors: int,
+                                   flags: bool) -> OptimizerStatus:
         """
         Build a circuit from the given cx_list and simulate it to obtain a logical error rate.
         The circuit is built by calling memory_experiment_circuit_from_cx_list with arguments:
@@ -79,15 +82,17 @@ class InteractiveCxListOptimizer:
         if self.experiment_type in ["X", "Z"]:
             # Use the corresponding logical operator.
             logicals = self.lx if self.experiment_type == "X" else self.lz
+
             status = self._simulate_circuit(cx_list, logicals, self.experiment_type,
-                                            max_num_shots, max_num_errors)
+                                            max_num_shots, max_num_errors, flags)
+
             return status
         elif self.experiment_type == "BOTH":
             # Simulate for X and Z separately.
             status_x = self._simulate_circuit(cx_list, self.lx, "X",
-                                              max_num_shots, max_num_errors)
+                                              max_num_shots, max_num_errors, flags)
             status_z = self._simulate_circuit(cx_list, self.lz, "Z",
-                                              max_num_shots, max_num_errors)
+                                              max_num_shots, max_num_errors, flags)
             E_x = status_x.objective_value
             E_z = status_z.objective_value
             # Combine: overall logical error rate.
@@ -95,19 +100,60 @@ class InteractiveCxListOptimizer:
             # Propagate errors approximately (assuming independence).
             err_x = status_x.objective_error
             err_z = status_z.objective_error
-            E_both_error = np.sqrt(( (1-E_z)*err_x )**2 + ((1-E_x)*err_z)**2)
+            E_both_error = np.sqrt(((1-E_z)*err_x)**2 + ((1-E_x)*err_z)**2)
             return OptimizerStatus(cx_list, E_both, E_both_error)
         else:
             raise ValueError("experiment_type must be 'X', 'Z', or 'both'.")
+
+    def _simulate_circuit_with_flags(self, cx_list: List[CXGate],
+                                     logicals: np.ndarray,
+                                     logical_type: str,
+                                     max_num_shots: int,
+                                     max_num_errors: int):
+        """
+        Helper to build and simulate a circuit with flags using memory_experiment_circuit_from_cx_list.
+        """
+        flag_circ, _, idle_time = memory_experiment_circuit_from_cx_list(
+            cx_list=cx_list,
+            ancilla_type=self.ancilla_type,
+            data_mapping=self.data_mapping,
+            ancilla_mapping=self.ancilla_mapping,
+            flag_mapping=dict(),  # No flag mapping used here
+            logicals=logicals,
+            logical_type=logical_type,
+            p_cx=self.p_cx,
+            p_idle=self.p_idle,
+            cycles_before_noise=1,
+            cycles_with_noise=self.cycles_with_noise,
+            cycles_after_noise=1,
+            flag=True
+        )
+
+        task = sinter.Task(circuit=flag_circ)
+        stats = sinter.collect(tasks=[task],
+                               num_workers=10,
+                               max_shots=max_num_shots,
+                               max_errors=max_num_errors,
+                               decoders=['bposd'],
+                               custom_decoders=self.custom_decoders)
+        print(stats)
+        # TODO
+
+        return OptimizerStatus(deepcopy(cx_list), logical_error_rate, logical_error_rate_error)
 
     def _simulate_circuit(self, cx_list: List[CXGate],
                           logicals: np.ndarray,
                           logical_type: str,
                           max_num_shots: int,
-                          max_num_errors: int) -> OptimizerStatus:
+                          max_num_errors: int,
+                          flags) -> OptimizerStatus:
         """
         Helper to build and simulate a circuit using memory_experiment_circuit_from_cx_list.
         """
+        if flags == True:
+            # Use the circuit with flags.
+            return self._simulate_circuit_with_flags(cx_list, logicals, logical_type,
+                                                     max_num_shots, max_num_errors)
         _, circ, idle_time = memory_experiment_circuit_from_cx_list(
             cx_list=cx_list,
             ancilla_type=self.ancilla_type,
@@ -141,11 +187,12 @@ class InteractiveCxListOptimizer:
 
         return OptimizerStatus(deepcopy(cx_list), logical_error_rate, logical_error_rate_error)
 
-    def start_optimization(self, num_shots, num_errors):
+    def start_optimization(self, num_shots: int, num_errors: int, flags: bool):
         self.best_cx_list = self.initial_cx_list
         status = self.measure_logical_error_rate(self.best_cx_list,
                                                  max_num_shots=num_shots,
-                                                 max_num_errors=num_errors)
+                                                 max_num_errors=num_errors,
+                                                 flags=flags)
         self.optimizer_history.append(status)
         self.best_obj = status.objective_value
         self.best_obj_error = status.objective_error
@@ -156,8 +203,10 @@ class InteractiveCxListOptimizer:
                          iterations: int,
                          max_num_shots: int,
                          max_num_errors: int,
+                         flags: bool,
                          draw: bool = False,
-                         step_type = 'edge_pair'):
+                         step_type='edge_pair',
+                         ):
         self.custom_decoders = {
             "bposd": SinterBpOsdDecoder(
                 max_iter=max_bp_iterations,
@@ -168,23 +217,28 @@ class InteractiveCxListOptimizer:
 
         if not self.optimizer_history:
             self.start_optimization(num_shots=max_num_shots,
-                                    num_errors=max_num_errors)
+                                    num_errors=max_num_errors,
+                                    flags=flags)
 
         for i in range(iterations):
             candidate = deepcopy(self.best_cx_list)
             if step_type == 'edge_pair':
-                changed = random_legal_local_change_inplace(candidate, self.ancilla_type)
+                changed = random_legal_local_change_inplace(
+                    candidate, self.ancilla_type)
             elif step_type == 'single_stabilizer':
                 permute_single_stabilizer_inplace(candidate)
                 changed = True
+
             else:
-                raise ValueError("step_type must be 'edge_pair' or 'single_stabilizer'")
+                raise ValueError(
+                    "step_type must be 'edge_pair' or 'single_stabilizer'")
 
             if not changed:
                 continue
             status = self.measure_logical_error_rate(candidate,
                                                      max_num_shots=max_num_shots,
-                                                     max_num_errors=max_num_errors)
+                                                     max_num_errors=max_num_errors,
+                                                     flags=flags)
             self.optimizer_history.append(status)
             if status.objective_value <= self.best_obj:
                 self.best_cx_list = candidate
@@ -197,8 +251,10 @@ class InteractiveCxListOptimizer:
 
     def plot_history(self):
         plt.figure()
-        objective_list = [point.objective_value for point in self.optimizer_history]
-        objective_error = [point.objective_error for point in self.optimizer_history]
+        objective_list = [
+            point.objective_value for point in self.optimizer_history]
+        objective_error = [
+            point.objective_error for point in self.optimizer_history]
         plt.errorbar(range(len(objective_list)),
                      objective_list,
                      yerr=objective_error,
