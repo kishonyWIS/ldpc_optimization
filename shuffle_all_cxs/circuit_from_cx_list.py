@@ -21,7 +21,10 @@ def memory_experiment_circuit_from_cx_list(
         cycles_before_noise: int = 1,
         cycles_with_noise: int = 1,
         cycles_after_noise: int = 1,
-        flag: bool = True
+        flag: bool = True,
+        p_phenomenological_error: float = 0.0,
+        p_measurement_error: float = 0.0,
+        hook_errors={} # ancilla_id: [(after_cx_number, p_error),...]
 ) -> Tuple[stim.Circuit, stim.Circuit, int]:
     """
     Build a Stim circuit from a global cx_list ordering (assumed to be the ordering for one measurement round)
@@ -75,11 +78,12 @@ def memory_experiment_circuit_from_cx_list(
     }
 
     # Pre-calculate, for each ancilla, the first and last occurrence in cx_list.
-    ancilla_positions = {}  # ancilla -> list of indices in cx_list
+    ancilla_positions_in_cx_list = {}  # ancilla -> list of indices in cx_list
     for idx, (_, a) in enumerate(cx_list):
-        ancilla_positions.setdefault(a, []).append(idx)
-    first_occurrence = {a: min(pos_list) for a, pos_list in ancilla_positions.items()}
-    last_occurrence = {a: max(pos_list) for a, pos_list in ancilla_positions.items()}
+        ancilla_positions_in_cx_list.setdefault(a, []).append(idx)
+    # sort the positions
+    for a in ancilla_positions_in_cx_list.keys():
+        ancilla_positions_in_cx_list[a].sort()
 
     # Define cycles: a list of booleans indicating whether noise is active.
     cycles_have_noise = ([False] * cycles_before_noise +
@@ -91,9 +95,11 @@ def memory_experiment_circuit_from_cx_list(
     for cycle_no, noisy in enumerate(cycles_have_noise):
         # Iterate over the global cx_list.
         cycle, measurement_counter = build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list,
-                                                                     data_mapping, first_occurrence, flag and noisy and (p_cx>0 or p_idle>0),
-                                                                     flag_mapping,
-                                                                     last_occurrence, measurement_counter, measurement_indexes)
+                                                                     data_mapping, ancilla_positions_in_cx_list, flag and noisy and (p_cx>0 or p_idle>0),
+                                                                     flag_mapping, measurement_counter, measurement_indexes,
+                                                                     p_phenomenological_error=p_phenomenological_error if noisy else 0,
+                                                                     p_measurement_error=p_measurement_error if noisy else 0,
+                                                                     hook_errors=hook_errors if noisy else {})
         all_cycles.append(cycle)
 
     # Concatenate all cycles into a single circuit.
@@ -145,14 +151,9 @@ def memory_experiment_circuit_from_cx_list(
 
     # add flag observables
     observable_index = logicals.shape[0]
-    for i_flag, indexes_of_measurements in measurement_indexes['X_flags'].items():
-        for i_cycle in range(len(indexes_of_measurements)):
-            indexes = [ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
-            circ.append_operation("OBSERVABLE_INCLUDE",
-                                  list(map(stim.target_rec, indexes)),
-                                  observable_index)
-            observable_index += 1
-    for i_flag, indexes_of_measurements in measurement_indexes['Z_flags'].items():
+    for flag in flag_mapping.keys():
+        flag_type = flag[0]
+        indexes_of_measurements = measurement_indexes[f"{flag_type}_flags"][flag]
         for i_cycle in range(len(indexes_of_measurements)):
             indexes = [ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
             circ.append_operation("OBSERVABLE_INCLUDE",
@@ -163,13 +164,26 @@ def memory_experiment_circuit_from_cx_list(
     return circ, circ_without_flag_observables, idle_time
 
 
-def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data_mapping, first_occurrence, flag,
-                                    flag_mapping, last_occurrence, measurement_counter, measurement_indexes):
+def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data_mapping, ancilla_positions_in_cx_list, flag,
+                                    flag_mapping, measurement_counter, measurement_indexes,
+                                    p_phenomenological_error: float = 0.0,
+                                    p_measurement_error: float = 0.0,
+                                    hook_errors={}  # ancilla_id: (after_cx_number, p_hook_error)
+                                    ):
     cycle = stim.Circuit()
+    data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
+    if p_phenomenological_error > 0:
+        cycle.append_operation("DEPOLARIZE1", data_indices, p_phenomenological_error)
+
     for idx, (q, a) in enumerate(cx_list):
         # For this ancilla, determine if this is the first or last occurrence.
-        first_idx = first_occurrence[a]
-        last_idx = last_occurrence[a]
+        first_idx = min(ancilla_positions_in_cx_list[a])
+        last_idx = max(ancilla_positions_in_cx_list[a])
+        hook_idx_to_p = {}
+        if a in hook_errors:
+            hook_idx_to_p = {}
+            for hook_after_cxs_number, p_hook_error in hook_errors[a]:
+                hook_idx_to_p[ancilla_positions_in_cx_list[a][hook_after_cxs_number]] = p_hook_error
         # On the first occurrence, reset the ancilla and prepare the flag qubit if needed.
         if idx == first_idx:
             if ancilla_type[a] == "X":
@@ -200,6 +214,10 @@ def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data
             cycle.append_operation("CX", [dq, aq])
             if flag and idx == first_idx:
                 cycle.append_operation("CX", [flag_mapping[a], aq])
+        # insert hook error on ancilla if on the right position
+        p_hook_error = hook_idx_to_p.get(idx, 0)
+        if p_hook_error > 0:
+            cycle.append_operation("DEPOLARIZE1", [aq], p_hook_error)
         # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
         if idx == last_idx:
             if flag:
@@ -212,10 +230,14 @@ def build_syndrome_extraction_cycle(ancilla_mapping, ancilla_type, cx_list, data
                     measurement_indexes['Z_flags'][a].append(measurement_counter)
                     measurement_counter += 1
             if ancilla_type[a] == "X":
+                if p_measurement_error > 0:
+                    cycle.append_operation("Z_ERROR", [aq], p_measurement_error)
                 cycle.append_operation("MX", [aq])
                 measurement_indexes['X_syndromes'][a].append(measurement_counter)
                 measurement_counter += 1
             elif ancilla_type[a] == "Z":
+                if p_measurement_error > 0:
+                    cycle.append_operation("X_ERROR", [aq], p_measurement_error)
                 cycle.append_operation("M", [aq])
                 measurement_indexes['Z_syndromes'][a].append(measurement_counter)
                 measurement_counter += 1
