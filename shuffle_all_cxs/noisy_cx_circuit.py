@@ -42,6 +42,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
 
     for op in circ_in:
         targets = op.targets_copy()
+        args = op.gate_args_copy()
         # Split operations that have multiple targets.
         if op.name in {"R", "RX", "M", "MX"}:
             for target in targets:
@@ -71,6 +72,9 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 new_circ.append_operation("CX", [q_c, q_t])
                 qubits_last_used[q_c] = t
                 qubits_last_used[q_t] = t
+        elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR']:
+            # don't count idling time for these operations, just add them to the circuit
+            new_circ.append_operation(op.name, targets, args)
         else:
             raise NotImplementedError
 
