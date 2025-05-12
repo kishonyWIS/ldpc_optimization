@@ -35,7 +35,12 @@ def permute_single_stabilizer_inplace(cx_list: List[CXGate], target_ancilla: str
     # Extract the sublist corresponding to this block.
     block = [cx_list[i] for i in indices]
     # Randomly permute the block.
+    original_block = block[:]
     random.shuffle(block)
+    for original, shuffled in zip(original_block, block):
+        if original != shuffled:
+            print(f"Changed: {original} -> {shuffled}")
+
     # Put the permuted block back into the original cx_list.
     for i, idx in enumerate(indices):
         cx_list[idx] = block[i]

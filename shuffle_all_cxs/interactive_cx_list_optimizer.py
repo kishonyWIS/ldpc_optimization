@@ -154,6 +154,7 @@ class InteractiveCxListOptimizer:
             # Use the circuit with flags.
             return self._simulate_circuit_with_flags(cx_list, logicals, logical_type,
                                                      max_num_shots, max_num_errors)
+
         _, circ, idle_time = memory_experiment_circuit_from_cx_list(
             cx_list=cx_list,
             ancilla_type=self.ancilla_type,
@@ -164,9 +165,7 @@ class InteractiveCxListOptimizer:
             logical_type=logical_type,
             p_cx=self.p_cx,
             p_idle=self.p_idle,
-            cycles_before_noise=1,
-            cycles_with_noise=self.cycles_with_noise,
-            cycles_after_noise=1,
+            number_of_cycles=self.cycles_with_noise,
             flag=False
         )
         task = sinter.Task(circuit=circ)
@@ -219,7 +218,6 @@ class InteractiveCxListOptimizer:
             self.start_optimization(num_shots=max_num_shots,
                                     num_errors=max_num_errors,
                                     flags=flags)
-
         for i in range(iterations):
             candidate = deepcopy(self.best_cx_list)
             if step_type == 'edge_pair':
