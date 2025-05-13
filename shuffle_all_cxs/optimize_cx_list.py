@@ -33,19 +33,19 @@ def objective(cx_list: List[CXGate],
     undetectable logical errors found by Stim's search_for_undetectable_logical_errors function.
     """
     _, circ = memory_experiment_circuit_from_cx_list(
-        cx_list = cx_list,
-        ancilla_type = ancilla_type,
-        data_mapping = data_mapping,
-        ancilla_mapping = ancilla_mapping,
-        flag_mapping = dict(),
-        lz = lz,
-        p = p,
-        x_detectors = False,
-        z_detectors = True,
-        cycles_before_noise = 1,
-        cycles_with_noise = 5,
-        cycles_after_noise = 1,
-        flag = False
+        cx_list=cx_list,
+        ancilla_type=ancilla_type,
+        data_mapping=data_mapping,
+        ancilla_mapping=ancilla_mapping,
+        flag_mapping=dict(),
+        lz=lz,
+        p=p,
+        x_detectors=False,
+        z_detectors=True,
+        cycles_before_noise=1,
+        cycles_with_noise=5,
+        cycles_after_noise=1,
+        flag=False
     )
 
     # try:
@@ -72,20 +72,20 @@ def objective_logical_error_rate(cx_list: List[CXGate],
     Build a circuit from the given cx_list and return an objective value computed as the logical error rate.
     """
     _, circ = memory_experiment_circuit_from_cx_list(
-        cx_list = cx_list,
-        ancilla_type = ancilla_type,
-        data_mapping = data_mapping,
-        ancilla_mapping = ancilla_mapping,
-        flag_mapping = dict(),
-        lz = lz,
-        p_cx = p_cx,
-        p_idle = p_idle,
-        x_detectors = False,
-        z_detectors = True,
-        cycles_before_noise = 1,
-        cycles_with_noise = 5,
-        cycles_after_noise = 1,
-        flag = False
+        cx_list=cx_list,
+        ancilla_type=ancilla_type,
+        data_mapping=data_mapping,
+        ancilla_mapping=ancilla_mapping,
+        flag_mapping=dict(),
+        lz=lz,
+        p_cx=p_cx,
+        p_idle=p_idle,
+        x_detectors=False,
+        z_detectors=True,
+        cycles_before_noise=1,
+        cycles_with_noise=5,
+        cycles_after_noise=1,
+        flag=False
     )
 
     task = sinter.Task(

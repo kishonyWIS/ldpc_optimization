@@ -1,5 +1,6 @@
 import stim
 
+
 def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
     """
     Take a Stim circuit (with operations: M, MX, R, RX, CX) and a collection of noisy qubits,
@@ -51,7 +52,8 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 # For each noisy qubit, add idling noise for idle_time = t - last_used - 1.
                 idle_time = t - qubits_last_used[q] - 1
                 if q in noisy_qubits and idle_time > 0 and p_idle > 0 and qubits_last_used[q] > 0:
-                    new_circ.append_operation("DEPOLARIZE1", target, idle_time*p_idle)
+                    new_circ.append_operation(
+                        "DEPOLARIZE1", target, idle_time*p_idle)
                     total_idling_time += idle_time
                 new_circ.append_operation(op.name, target)
                 qubits_last_used[q] = t
@@ -64,7 +66,8 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 for q in [q_c, q_t]:
                     idle_time = t - qubits_last_used[q] - 1
                     if q in noisy_qubits and idle_time > 0 and p_idle > 0 and qubits_last_used[q] > 0:
-                        new_circ.append_operation("DEPOLARIZE1", [q], idle_time*p_idle)
+                        new_circ.append_operation(
+                            "DEPOLARIZE1", [q], idle_time*p_idle)
                         total_idling_time += idle_time
                 # After a CX, if both qubits are noisy, add two-qubit noise.
                 if q_c in noisy_qubits and q_t in noisy_qubits and p_cx > 0:
@@ -72,7 +75,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 new_circ.append_operation("CX", [q_c, q_t])
                 qubits_last_used[q_c] = t
                 qubits_last_used[q_t] = t
-        elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR']:
+        elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR', 'DETECTOR', 'OBSERVABLE_INCLUDE']:
             # don't count idling time for these operations, just add them to the circuit
             new_circ.append_operation(op.name, targets, args)
         else:
@@ -90,7 +93,8 @@ if __name__ == "__main__":
     circ_in = stim.Circuit()
     circ_in.append_operation("R", [0, 1])
     circ_in.append_operation("RX", [2])
-    circ_in.append_operation("CX", [0, 1, 1, 2])  # CX with control 0, targets 1 and 2 (will be split)
+    # CX with control 0, targets 1 and 2 (will be split)
+    circ_in.append_operation("CX", [0, 1, 1, 2])
     circ_in.append_operation("M", [0, 1, 2])
 
     # Suppose qubits 0 and 1 are noisy.

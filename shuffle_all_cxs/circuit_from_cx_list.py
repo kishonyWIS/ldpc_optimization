@@ -87,29 +87,6 @@ def memory_experiment_circuit_from_cx_list(
     # initialize data qubits in logical basis
     circ.append_operation('R' if logical_type == "Z" else 'RX', data_indices)
 
-    measurement_counter = 0
-
-    for _ in range(3):
-        noiseless_circ, measurement_counter = build_syndrome_extraction_cycle(ancilla_mapping,
-                                                                              ancilla_type,
-                                                                              cx_list,
-                                                                              data_mapping,
-                                                                              ancilla_positions_in_cx_list,
-                                                                              flag and (
-                                                                                  p_cx > 0 or p_idle > 0),
-                                                                              flag_mapping,
-                                                                              measurement_counter,
-                                                                              measurement_indexes,
-                                                                              p_phenomenological_error=0,
-                                                                              p_measurement_error=0,
-                                                                              hook_errors={})
-
-    circ += noiseless_circ
-
-    noiseless_circ_copy = noiseless_circ.copy()
-    noisy_circ, idle_time = add_noise_to_circuit(
-        noiseless_circ_copy, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
-
     def add_detectors(circuit_to_add_detectors, m_counter, cycle):
         # Append detectors.
         # For each ancilla, add a detector comparing consecutive syndrome measurements.
@@ -130,17 +107,85 @@ def memory_experiment_circuit_from_cx_list(
                     cycle, int(a[1:]), 1])
 
         return circuit_to_add_detectors
-    noisy_circ = add_detectors(noisy_circ, 2*len(ancilla_mapping), 0)
-    circ += number_of_cycles * noisy_circ
 
-    noiseless_circ = add_detectors(noiseless_circ, 3*len(ancilla_mapping), 1)
+    def create_circuit_layer(flags: bool, noise: bool, detectors: bool, cycle: int = 0, m_counter=0):
+
+        noiseless_circ, m_counter = build_syndrome_extraction_cycle(ancilla_mapping,
+                                                                    ancilla_type,
+                                                                    cx_list,
+                                                                    data_mapping,
+                                                                    ancilla_positions_in_cx_list,
+                                                                    flags,
+                                                                    flag_mapping,
+                                                                    m_counter,
+                                                                    measurement_indexes,
+                                                                    p_phenomenological_error=0,
+                                                                    p_measurement_error=0,
+                                                                    hook_errors={})
+        if detectors:
+            noiseless_circ = add_detectors(
+                noiseless_circ, m_counter, cycle)
+
+        if flags:
+            observable_index = 0
+
+            for flag in flag_mapping.keys():
+                flag_type = flag[0]
+                indexes_of_measurements = measurement_indexes[f"{flag_type}_flags"][flag]
+                indexes = [
+                    ii - m_counter for ii in [indexes_of_measurements[0]]]
+                noiseless_circ.append_operation("OBSERVABLE_INCLUDE",
+                                                list(
+                                                    map(stim.target_rec, indexes)),
+                                                observable_index)
+                observable_index += 1
+        if noise == True:
+            noisy_circ, idle_time = add_noise_to_circuit(
+                noiseless_circ, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
+            return noisy_circ, m_counter
+        else:
+            return noiseless_circ, m_counter
+
+    measurement_counter = 0
+
+    noiseless_circ, measurement_counter = create_circuit_layer(
+        flags=False, noise=False, detectors=False, m_counter=measurement_counter)
     circ += noiseless_circ
 
+    if flag:
+        noisy_circ, measurement_counter = create_circuit_layer(flags=False, noise=True,
+                                                               detectors=True, cycle=0, m_counter=measurement_counter)
+        circ += (number_of_cycles//2 - 1) * noisy_circ
+        noisy_flag_circ, measurement_counter = create_circuit_layer(
+            flags=True, noise=True, detectors=True, cycle=1, m_counter=measurement_counter)
+
+        circ += noisy_flag_circ
+
+        noisy_circ, measurement_counter = create_circuit_layer(flags=False,
+                                                               noise=True,
+                                                               detectors=True,
+                                                               cycle=0,
+                                                               m_counter=measurement_counter)
+        circ += (number_of_cycles//2 - 1) * noisy_circ
+
+    else:
+        noisy_circ = add_detectors(noisy_circ, int(2/3*measurement_counter), 0)
+
+        circ += number_of_cycles * noisy_circ
+
+    noiseless_circ, measurement_counter = create_circuit_layer(
+        flags=False, noise=False, detectors=False, m_counter=measurement_counter)
+    """
+    circ += noiseless_circ
+    noiseless_circ = add_detectors(noiseless_circ, measurement_counter, 1)
+    circ += noiseless_circ
+    """
     # Append final data measurements.
     circ.append_operation("M" if logical_type == "Z" else "MX", data_indices)
     measurement_counter += n
 
     # Append logical observables.
+    i_logical = circ.num_observables
     for i_logical, logical in enumerate(logicals):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
         circ.append_operation("OBSERVABLE_INCLUDE",
@@ -151,19 +196,7 @@ def memory_experiment_circuit_from_cx_list(
     # Make a copy of the circuit without flag OBSERVABLE_INCLUDE operations.
     circ_without_flag_observables = circ.copy()
 
-    # add flag observables
-    observable_index = logicals.shape[0]
-    for flag in flag_mapping.keys():
-        flag_type = flag[0]
-        indexes_of_measurements = measurement_indexes[f"{flag_type}_flags"][flag]
-        for i_cycle in range(len(indexes_of_measurements)):
-            indexes = [
-                ii - measurement_counter for ii in [indexes_of_measurements[i_cycle]]]
-            circ.append_operation("OBSERVABLE_INCLUDE",
-                                  list(map(stim.target_rec, indexes)),
-                                  observable_index)
-            observable_index += 1
-    return circ, circ_without_flag_observables, idle_time
+    return circ, circ_without_flag_observables
 
 
 def build_syndrome_extraction_cycle(ancilla_mapping,
@@ -266,12 +299,13 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
 if __name__ == "__main__":
     import numpy as np
     import stim
-    from cx_list_from_stabilizers_in_sequence import StabilizerCode
+    from cx_list_from_stabilizers_in_sequence import StabilizerCode, RotatedSurfaceCode
 
     from quits.qldpc_code import *
     from quits.circuit import get_qldpc_mem_circuit
     from quits.decoder import sliding_window_bposd_circuit_mem
     from quits.simulation import get_stim_mem_result
+    """
     lift_size, factor = 15, 3
     p1 = [0, 1, 5]   # e + x + x^5
     p2 = [0, 2, 7]   # e + x^2 + x^7
@@ -302,18 +336,30 @@ if __name__ == "__main__":
 
     bpc_code = StabilizerCode(stabilizer_x, stabilizer_z, code.lx, code.lz)
     cx_list = bpc_code.generate_cx_list()
-    ancilla_type, data_mapping, ancilla_mapping = bpc_code.build_mappings()
+    ancilla_type, data_mapping, ancilla_mapping, flag_mapping = bpc_code.build_mappings()
+    """
 
-    flag_circ, _, idle_time = memory_experiment_circuit_from_cx_list(
+    code = RotatedSurfaceCode(L=3)
+
+    cx_list = code.generate_cx_list()
+    ancilla_type, data_mapping, ancilla_mapping, flag_mapping = code.build_mappings()
+    lz = code.lz
+    lx = code.lx
+    data_coords = code.data_coords
+    ancilla_coords = code.ancilla_coords
+
+    flag_circ, _ = memory_experiment_circuit_from_cx_list(
         cx_list=cx_list,
         ancilla_type=ancilla_type,
         data_mapping=data_mapping,
         ancilla_mapping=ancilla_mapping,
-        flag_mapping=dict(),  # No flag mapping used here
+        flag_mapping=flag_mapping,
         logicals=code.lz,
         logical_type='Z',
         p_cx=0.01,
         p_idle=0,
-        number_of_cycles=5,
-        flag=False
+        number_of_cycles=8,
+        flag=True
     )
+
+    print(flag_circ)

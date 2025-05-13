@@ -64,11 +64,17 @@ class StabilizerCode:
             ancilla_type[a] = "Z"
         data_mapping = {q: q for q in range(self.n)}
         ancilla_mapping = {}
+        flag_mapping = {}
         next_index = self.n
         for ancilla in sorted(ancilla_type.keys()):
             ancilla_mapping[ancilla] = next_index
             next_index += 1
-        return ancilla_type, data_mapping, ancilla_mapping
+
+        for ancilla in sorted(ancilla_type.keys()):
+            flag_mapping[ancilla] = next_index
+            next_index += 1
+
+        return ancilla_type, data_mapping, ancilla_mapping, flag_mapping
 
     def get_x_ancillas(self):
         """Return a list of ancilla IDs for X stabilizers."""
@@ -109,7 +115,8 @@ def generate_rotated_surface_code_stabilizers(L):
     # Interior 2x2 blocks.
     for i in range(L - 1):
         for j in range(L - 1):
-            block = [i * L + j, i * L + j + 1, (i + 1) * L + j, (i + 1) * L + j + 1]
+            block = [i * L + j, i * L + j + 1,
+                     (i + 1) * L + j, (i + 1) * L + j + 1]
             if (i + j) % 2 == 0:
                 x_stab.append(block)
             else:
