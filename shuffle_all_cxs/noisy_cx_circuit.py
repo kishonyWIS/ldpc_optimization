@@ -81,7 +81,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
         else:
             raise NotImplementedError
 
-    print(f"Total idling time: {total_idling_time}")
+#    print(f"Total idling time: {total_idling_time}")
 
     return new_circ, total_idling_time
 

@@ -23,7 +23,7 @@ def memory_experiment_circuit_from_cx_list(
         p_phenomenological_error: float = 0.0,
         p_measurement_error: float = 0.0,
         hook_errors={}  # ancilla_id: [(after_cx_number, p_error),...]
-) -> Tuple[stim.Circuit, stim.Circuit, int]:
+) -> stim.Circuit:
     """
     Build a Stim circuit from a global cx_list ordering (assumed to be the ordering for one measurement round)
     and then apply it repeatedly for multiple cycles.
@@ -126,19 +126,6 @@ def memory_experiment_circuit_from_cx_list(
             noiseless_circ = add_detectors(
                 noiseless_circ, m_counter, cycle)
 
-        if flags:
-            observable_index = 0
-
-            for flag in flag_mapping.keys():
-                flag_type = flag[0]
-                indexes_of_measurements = measurement_indexes[f"{flag_type}_flags"][flag]
-                indexes = [
-                    ii - m_counter for ii in [indexes_of_measurements[0]]]
-                noiseless_circ.append_operation("OBSERVABLE_INCLUDE",
-                                                list(
-                                                    map(stim.target_rec, indexes)),
-                                                observable_index)
-                observable_index += 1
         if noise == True:
             noisy_circ, idle_time = add_noise_to_circuit(
                 noiseless_circ, noisy_qubits=noisy_qubits, p_idle=p_idle, p_cx=p_cx)
@@ -149,54 +136,47 @@ def memory_experiment_circuit_from_cx_list(
     measurement_counter = 0
 
     noiseless_circ, measurement_counter = create_circuit_layer(
-        flags=False, noise=False, detectors=False, m_counter=measurement_counter)
+        flags=flag, noise=False, detectors=False, m_counter=measurement_counter)
     circ += noiseless_circ
+
+    noisy_circ, measurement_counter = create_circuit_layer(
+        flags=flag, noise=True, detectors=True, cycle=0, m_counter=measurement_counter)
+
+    circ += number_of_cycles * noisy_circ
 
     if flag:
-        noisy_circ, measurement_counter = create_circuit_layer(flags=False, noise=True,
-                                                               detectors=True, cycle=0, m_counter=measurement_counter)
-        circ += (number_of_cycles//2 - 1) * noisy_circ
-        noisy_flag_circ, measurement_counter = create_circuit_layer(
-            flags=True, noise=True, detectors=True, cycle=1, m_counter=measurement_counter)
+        observable_index = 0
+        for flag in flag_mapping.keys():
+            flag_type = flag[0]
+            indexes_of_measurements = measurement_indexes[f"{flag_type}_flags"][flag]
+            indexes = [
+                ii - measurement_counter for ii in [indexes_of_measurements[1]]]
 
-        circ += noisy_flag_circ
-
-        noisy_circ, measurement_counter = create_circuit_layer(flags=False,
-                                                               noise=True,
-                                                               detectors=True,
-                                                               cycle=0,
-                                                               m_counter=measurement_counter)
-        circ += (number_of_cycles//2 - 1) * noisy_circ
-
-    else:
-        noisy_circ = add_detectors(noisy_circ, int(2/3*measurement_counter), 0)
-
-        circ += number_of_cycles * noisy_circ
+            for cycle_index in range(0, number_of_cycles):
+                circ.append_operation("OBSERVABLE_INCLUDE",
+                                      list(
+                                          map(stim.target_rec, [
+                                              index-cycle_index*(measurement_counter//2) for index in indexes])),
+                                      observable_index)
+                observable_index += 1
 
     noiseless_circ, measurement_counter = create_circuit_layer(
-        flags=False, noise=False, detectors=False, m_counter=measurement_counter)
-    """
+        flags=False, noise=False, detectors=True, m_counter=measurement_counter, cycle=1)
+
     circ += noiseless_circ
-    noiseless_circ = add_detectors(noiseless_circ, measurement_counter, 1)
-    circ += noiseless_circ
-    """
     # Append final data measurements.
     circ.append_operation("M" if logical_type == "Z" else "MX", data_indices)
     measurement_counter += n
 
     # Append logical observables.
-    i_logical = circ.num_observables
     for i_logical, logical in enumerate(logicals):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
         circ.append_operation("OBSERVABLE_INCLUDE",
                               [stim.target_rec(i - n)
                                for i in qubits_in_logical],
-                              i_logical)
+                              i_logical + circ.num_observables)
 
-    # Make a copy of the circuit without flag OBSERVABLE_INCLUDE operations.
-    circ_without_flag_observables = circ.copy()
-
-    return circ, circ_without_flag_observables
+    return circ
 
 
 def build_syndrome_extraction_cycle(ancilla_mapping,
@@ -361,5 +341,7 @@ if __name__ == "__main__":
         number_of_cycles=8,
         flag=True
     )
+
+    # write test for distance
 
     print(flag_circ)

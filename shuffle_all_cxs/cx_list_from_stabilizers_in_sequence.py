@@ -232,7 +232,7 @@ class RotatedSurfaceCode(StabilizerCode):
 # --- Example usage ---
 if __name__ == "__main__":
     # For a rotated surface code with L = 3 (3x3 lattice).
-    L = 5
+    L = 3
 
     code = RotatedSurfaceCode(L)
     print("Rotated Surface Code Definition:")
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     for i, gate in enumerate(cx_list):
         print(f"{i}: {gate}")
 
-    ancilla_type, data_mapping, ancilla_mapping = code.build_mappings()
+    ancilla_type, data_mapping, ancilla_mapping, flag_mapping = code.build_mappings()
     print("Ancilla Type Dictionary:")
     print(ancilla_type)
     print("Data Mapping:")
