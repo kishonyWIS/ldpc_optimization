@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 
 class StabilizerCode:
@@ -38,6 +39,7 @@ class StabilizerCode:
         """
         cx_list = []
         for ancilla, qubits in zip(self.get_x_ancillas(), self.x_stabilizers):
+
             for q in qubits:
                 cx_list.append((q, ancilla))
         for ancilla, qubits in zip(self.get_z_ancillas(), self.z_stabilizers):
@@ -93,7 +95,67 @@ class StabilizerCode:
         return s
 
 
-def generate_rotated_surface_code_stabilizers(L):
+def generate_optimally_ordered_rotated_surface_code_stabilizers(L):
+    """
+    Generate the stabilizers for a rotated surface code on an L×L lattice (L odd).
+
+    Data qubits are arranged in L rows (row 0 to L-1) and L columns (col 0 to L-1) in row‐major order.
+    In the interior, every 2×2 block (with top‐left corner at (i,j) for i,j=0,...,L-2) is used,
+    with type determined by (i+j) mod 2 (if even, assign to X; if odd, assign to Z).
+
+    Returns:
+      x_stabilizers, z_stabilizers : two lists of lists of int.
+    """
+    x_stab = []
+    z_stab = []
+    # Interior 2x2 blocks.
+    for i in range(L - 1):
+        for j in range(L - 1):
+            block = [i * L + j, i * L + j + 1,
+                     (i + 1) * L + j, (i + 1) * L + j + 1]
+            if (i + j) % 2 == 0:
+                x_stab.append(block)
+            else:
+                z_stab.append(block)
+    # Reorder each list inside x_stab as: 2nd biggest, smallest, biggest, 2nd smallest.
+    optimally_ordered_x_stab = []
+    optimally_ordered_z_stab = []
+    for stab in x_stab:
+        optimally_ordered_x_stab.append(
+            [stab[2], stab[0], stab[3], stab[1]])
+    for stab in z_stab:
+        optimally_ordered_z_stab.append(
+            [stab[1], stab[0], stab[3], stab[2]])
+
+    # Top boundary: row 0.
+    top = list(range(L))
+    # Partition top row into (L-1)//2 pairs using even-indexed pairs.
+    for k in range((L - 1) // 2):
+        pair = [top[2 * k+1], top[2 * k]]
+
+        # Top boundary stabilizers are Z.
+        optimally_ordered_z_stab.append(pair)
+    # Bottom boundary: row L-1.
+    bottom = list(range((L - 1) * L, L * L))
+    for k in range((L - 1) // 2):
+        # For bottom, choose the last pair.
+        pair = [bottom[-1 - 2 * k], bottom[-2 - 2 * k]]
+        optimally_ordered_z_stab.append(pair)
+    # Left boundary: column 0.
+    left = [i * L for i in range(L)]
+    for k in range(1, (L - 1) // 2 + 1):
+        pair = [left[2 * k], left[2 * k-1]]
+        optimally_ordered_x_stab.append(pair)
+    # Right boundary: column L-1.
+    right = [i * L + (L - 1) for i in range(L)]
+    for k in range(1, (L - 1) // 2 + 1):
+        pair = [right[2 * k - 2], right[2 * k - 1]]
+        optimally_ordered_x_stab.append(pair)
+
+    return optimally_ordered_x_stab, optimally_ordered_z_stab
+
+
+def generate_random_ordered_rotated_surface_code_stabilizers(L):
     """
     Generate the stabilizers for a rotated surface code on an L×L lattice (L odd).
 
@@ -143,11 +205,17 @@ def generate_rotated_surface_code_stabilizers(L):
     for k in range(1, (L - 1) // 2 + 1):
         pair = [right[2 * k - 2], right[2 * k - 1]]
         x_stab.append(pair)
+
+    # Randomize the order of qubits in each stabilizer.
+    for stab in x_stab:
+        random.shuffle(stab)
+    for stab in z_stab:
+        random.shuffle(stab)
     return x_stab, z_stab
 
 
 class RotatedSurfaceCode(StabilizerCode):
-    def __init__(self, L):
+    def __init__(self, L, ordering: str = 'random'):
         """
         Initialize a RotatedSurfaceCode on an L×L lattice (L odd) with given logical operators lx and lz.
 
@@ -171,7 +239,14 @@ class RotatedSurfaceCode(StabilizerCode):
 
         if L < 3 or L % 2 == 0:
             raise ValueError("L must be an odd integer >= 3.")
-        x_stab, z_stab = generate_rotated_surface_code_stabilizers(L)
+        if ordering == 'random':
+            x_stab, z_stab = generate_random_ordered_rotated_surface_code_stabilizers(
+                L)
+        elif ordering == 'optimal':
+            x_stab, z_stab = generate_optimally_ordered_rotated_surface_code_stabilizers(
+                L)
+        else:
+            raise ValueError("Invalid ordering. Use 'random' or 'optimal'.")
         super().__init__(x_stab, z_stab, lx, lz)
         self.L = L
 

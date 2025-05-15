@@ -1,7 +1,7 @@
 import stim
 import numpy as np
 from typing import List, Tuple, Dict
-from noisy_cx_circuit import add_noise_to_circuit
+from .noisy_cx_circuit import add_noise_to_circuit
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
@@ -328,7 +328,7 @@ if __name__ == "__main__":
     data_coords = code.data_coords
     ancilla_coords = code.ancilla_coords
 
-    flag_circ, _ = memory_experiment_circuit_from_cx_list(
+    flag_circ = memory_experiment_circuit_from_cx_list(
         cx_list=cx_list,
         ancilla_type=ancilla_type,
         data_mapping=data_mapping,

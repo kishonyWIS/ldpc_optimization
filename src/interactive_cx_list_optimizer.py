@@ -3,14 +3,14 @@ from typing import Dict, List, Tuple
 import sinter
 from copy import deepcopy
 import numpy as np
-from draw_ordered_tanner_graph import draw_cx_list
-from optimize_cx_list import CXGate
-from circuit_from_cx_list import memory_experiment_circuit_from_cx_list
+# from draw_ordered_tanner_graph import draw_cx_list
+from .optimize_cx_list import CXGate
+from .circuit_from_cx_list import memory_experiment_circuit_from_cx_list
 from ldpc.sinter_decoders import SinterBpOsdDecoder
-from shuffle_full_cx_list import random_legal_local_change_inplace
-from permute_single_stabilizer import permute_single_stabilizer_inplace
+from .shuffle_full_cx_list import random_legal_local_change_inplace
+from .permute_single_stabilizer import permute_single_stabilizer_inplace
 import matplotlib.pyplot as plt
-from cx_list_from_stabilizers_in_sequence import StabilizerCode
+from .cx_list_from_stabilizers_in_sequence import StabilizerCode
 import collections
 
 
@@ -138,6 +138,7 @@ class InteractiveCxListOptimizer:
             number_of_cycles=self.cycles_with_noise,
             flag=True
         )
+
         task = sinter.Task(circuit=flag_circ)
         stats = sinter.collect(tasks=[task],
                                num_workers=10,
@@ -164,6 +165,7 @@ class InteractiveCxListOptimizer:
         logical_error_rate = n_logical_errors / n_shots
         logical_error_rate_error = np.sqrt(
             logical_error_rate * (1 - logical_error_rate) / n_shots)
+
         return logical_error_rate, logical_error_rate_error
 
     def find_worst_flag(self, observable_error_combos: collections.Counter) -> int:
@@ -171,14 +173,25 @@ class InteractiveCxListOptimizer:
         n_flags = len(self.flag_mapping)
         n_times_flagged = [0] * n_flags
 
-        for key in observable_error_combos.keys():
+        for key, counts in observable_error_combos.items():
+
+            # TODO: implement for multiple logicals
             if key[-1] == 'E':  # the last entry is the value of the actual logical observable
+                flag_values = key.split('=')[-1][:-1]
+                cycles = len(flag_values)//n_flags
 
-                for i, flag in enumerate(key.split('=')[-1][:-1]):
-                    if flag == 'E':
+                # count the number of 'E' in the first n_flags entries
+                for j in range(n_flags):
+                    for i in range(cycles):
 
-                        n_times_flagged[i %
-                                        n_flags] += observable_error_combos[key]
+                        if flag_values[cycles*j+i] == 'E':
+                            n_times_flagged[j] += counts
+
+        # for i, flag in enumerate(key.split('=')[-1][:-1]):
+        #     if flag == 'E':
+        #         n_times_flagged[i //
+        #                         n_flags] += counts
+        print(f"n_times_flagged: {n_times_flagged}")
         max_flag_index = n_times_flagged.index(max(n_times_flagged))
 
         flag_mapping = list(self.flag_mapping.keys())
@@ -276,6 +289,7 @@ class InteractiveCxListOptimizer:
                                     num_errors=max_num_errors,
                                     flags=flags)
         for i in range(iterations):
+            print(f'iteration {i}')
             candidate = deepcopy(self.best_cx_list)
             if step_type == 'edge_pair':
                 changed = random_legal_local_change_inplace(
@@ -312,17 +326,21 @@ class InteractiveCxListOptimizer:
                 #     draw_cx_list(self.best_cx_list, self.ancilla_type,
                 #                  data_coords=self.data_coords, ancilla_coords=self.ancilla_coords)
 
-    def plot_history(self):
-        plt.figure()
+    def plot_history(self, ax: plt.Axes = None, label: str = None):
+        if ax is None:
+            fig, ax = plt.subplots()
         objective_list = [
             point.objective_value for point in self.optimizer_history]
         objective_error = [
             point.objective_error for point in self.optimizer_history]
-        plt.errorbar(range(len(objective_list)),
-                     objective_list,
-                     yerr=objective_error,
-                     fmt='o',
-                     label='Objective Value')
-        plt.xlabel('Iteration')
-        plt.ylabel('Objective Value')
-        plt.show()
+        ax.errorbar(range(len(objective_list)),
+                    objective_list,
+                    yerr=objective_error,
+                    fmt='o',
+                    label=label)
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Objective Value')
+        if ax.get_legend() is None:
+            ax.legend()
+        if ax.figure is not plt.gcf():
+            plt.show()

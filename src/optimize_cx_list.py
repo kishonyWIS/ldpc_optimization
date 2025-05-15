@@ -1,17 +1,17 @@
-from circuit_from_cx_list import memory_experiment_circuit_from_cx_list
-from shuffle_full_cx_list import random_legal_local_change_inplace
-from cx_list_from_stabilizers_in_sequence import RotatedSurfaceCode
-from copy import deepcopy
-from typing import List, Dict, Tuple
-from draw_ordered_tanner_graph import draw_cx_list
-import stim
-import sinter
-import numpy as np
-# from stimbposd import SinterDecoder_BPOSD
-import cProfile
-import pstats
-from io import StringIO
 import matplotlib.pyplot as plt
+from io import StringIO
+import pstats
+import cProfile
+import numpy as np
+import sinter
+import stim
+from typing import List, Dict, Tuple
+from copy import deepcopy
+from .cx_list_from_stabilizers_in_sequence import RotatedSurfaceCode
+from .shuffle_full_cx_list import random_legal_local_change_inplace
+from .circuit_from_cx_list import memory_experiment_circuit_from_cx_list
+# from draw_ordered_tanner_graph import draw_cx_list
+# from stimbposd import SinterDecoder_BPOSD
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
