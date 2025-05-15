@@ -121,7 +121,7 @@ def memory_experiment_circuit_from_cx_list(
                                                                     measurement_indexes,
                                                                     p_phenomenological_error=0,
                                                                     p_measurement_error=0,
-                                                                    hook_errors={})
+                                                                    hook_errors=hook_errors if noise else {})
         if detectors:
             noiseless_circ = add_detectors(
                 noiseless_circ, m_counter, cycle)
