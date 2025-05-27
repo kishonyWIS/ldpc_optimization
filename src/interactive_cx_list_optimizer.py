@@ -34,7 +34,8 @@ class InteractiveCxListOptimizer:
                  experiment_type: str,  # "X", "Z", or "both"
                  p_cx: float,
                  p_idle: float,
-                 cycles_with_noise: int):
+                 cycles_with_noise: int,
+                 decoder: str = 'bposd',):
         """
         Initialize the optimizer.
 
@@ -64,6 +65,7 @@ class InteractiveCxListOptimizer:
         self.p_cx = p_cx
         self.p_idle = p_idle
         self.cycles_with_noise = cycles_with_noise
+        self.decoder = decoder
 
     def measure_logical_error_rate(self,
                                    cx_list: List[CXGate],
@@ -144,7 +146,7 @@ class InteractiveCxListOptimizer:
                                num_workers=10,
                                max_shots=max_num_shots,
                                max_errors=max_num_errors,
-                               decoders=['bposd'],
+                               decoders=[self.decoder],
                                custom_decoders=self.custom_decoders,
                                count_observable_error_combos=True)
 
@@ -242,7 +244,7 @@ class InteractiveCxListOptimizer:
                                num_workers=10,
                                max_shots=max_num_shots,
                                max_errors=max_num_errors,
-                               decoders=['bposd'],
+                               decoders=[self.decoder],
                                custom_decoders=self.custom_decoders)
         for stat in stats:
             logical_error_rate = stat.errors / stat.shots
