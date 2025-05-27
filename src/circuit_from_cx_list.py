@@ -57,6 +57,7 @@ def memory_experiment_circuit_from_cx_list(
       x_detectors, z_detectors: Whether to add detector operations for X or Z stabilizers.
       number_of_cycles: Number of cycles.
       flag: Whether to insert flag operations.
+      p_phenomenological_error: Probability of phenomenological errors before syndrome extraction on data qubits.
 
     Returns:
       A tuple (circ, circ_without_flag_observables) where:
@@ -119,7 +120,7 @@ def memory_experiment_circuit_from_cx_list(
                                                                     flag_mapping,
                                                                     m_counter,
                                                                     measurement_indexes,
-                                                                    p_phenomenological_error=0,
+                                                                    p_phenomenological_error=p_phenomenological_error if noise else 0,
                                                                     p_measurement_error=0,
                                                                     hook_errors=hook_errors if noise else {})
         if detectors:
