@@ -40,6 +40,7 @@ def permute_single_stabilizer_inplace(cx_list: List[CXGate], target_ancilla: str
         random.shuffle(block)
         if block != original_block:
             break
+
     for original, shuffled in zip(original_block, block):
         if original != shuffled:
             print(f"Changed: {original} -> {shuffled}")

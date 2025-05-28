@@ -1,7 +1,7 @@
 import stim
 import numpy as np
 from typing import List, Tuple, Dict
-from .noisy_cx_circuit import add_noise_to_circuit
+from src.noisy_cx_circuit import add_noise_to_circuit
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
@@ -170,6 +170,7 @@ def memory_experiment_circuit_from_cx_list(
     measurement_counter += n
 
     # Append logical observables.
+
     for i_logical, logical in enumerate(logicals):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
         circ.append_operation("OBSERVABLE_INCLUDE",
@@ -340,9 +341,9 @@ if __name__ == "__main__":
         p_cx=0.01,
         p_idle=0,
         number_of_cycles=8,
-        flag=True
+        flag=False
     )
 
     # write test for distance
 
-    print(flag_circ)
+    print(flag_circ.num_observables)
