@@ -29,6 +29,14 @@ def test_build_stabilizer_queues():
         4, 3, 7, 6], 'Z2': [1, 0], 'Z3': [8, 7]}
 
 
+def test_interweave_cxs():
+    compiler.compile_strategy = 'x_z_in_sequence'
+    interwoven_cx_list = compiler.interweave_cxs(cx_list)
+    assert len(interwoven_cx_list) == 8
+
+
+test_interweave_cxs()
+
 # def test_order_CNOTS_rsc():
 #     code = RotatedSurfaceCode(L=3, ordering='optimal')
 
@@ -61,6 +69,7 @@ def test_build_stabilizer_queues():
 
 # def test_8_gate_circuit():
 #     cx_list = [
+
 #         (0, 'X0'),
 #         (1, 'X0'),
 #         (2, 'X0'),

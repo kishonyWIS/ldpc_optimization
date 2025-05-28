@@ -1,13 +1,28 @@
+from src.cx_list_from_stabilizers_in_sequence import StabilizerCode
+
+
 class InterwovenCircuitCompiler():
-    def __init__(self, code, cx_list):
+    def __init__(self,
+                 code: StabilizerCode,
+                 cx_list: list,
+                 compile_strategy: str = 'x_z_in_sequence'):
+        """
+        compile_strategy: 'x_z_in_sequence' or 'x_z_in_parallel'
+        """
         self.code = code
+        self.compile_strategy = compile_strategy
         self.interwoven_cx_list = self.interweave_cxs(cx_list)
 
-    def interweave_cxs(self, cx_list):
-        x_stabilizer_queue, z_stabilizer_queue = self.build_queues(cx_list)
+    def interweave_cxs(self, cx_list: list) -> list:
+        x_stabilizer_queue, z_stabilizer_queue = self.build_stabilizer_queues(
+            cx_list)
         interwoven_cx_list = self.order_x_stabilizers(x_stabilizer_queue)
+        if self.compile_strategy == 'x_z_in_sequence':
+            z_cx_list = self.order_x_stabilizers(z_stabilizer_queue)
+            interwoven_cx_list.extend(z_cx_list)
+        return (interwoven_cx_list)
 
-    def build_stabilizer_queues(self, cx_list):
+    def build_stabilizer_queues(self, cx_list: list) -> tuple:
         """
         Build the x and z stabilizer queues from the list of CNOTs.
         Each queue is a dictionary where the keys are auxiliary qubits (stabilizers)
@@ -29,7 +44,7 @@ class InterwovenCircuitCompiler():
 
         return (x_stabilizer_queue, z_stabilizer_queue)
 
-    def order_x_stabilizers(self, x_stabilizer_queue):
+    def order_x_stabilizers(self, x_stabilizer_queue: dict) -> list:
         """Order the x stabilizers in a way that minimizes the number of idle cycles.
 
         The ordering is done by interleaving the CNOTs in such a way that
@@ -70,7 +85,11 @@ class InterwovenCircuitCompiler():
                 x_stabilizer_queue[auxiliary_qubit].pop(0)
         return interwoven_cx_list
 
-    def find_earliest_availability(self, data_qubit, auxiliary_qubit, data_qubits_used, auxiliary_qubits_used):
+    def find_earliest_availability(self,
+                                   data_qubit: str,
+                                   auxiliary_qubit: str,
+                                   data_qubits_used: list,
+                                   auxiliary_qubits_used: list) -> int:
         """
         Find the earliest cycle when both the data qubit and the auxiliary qubit are available.
         """
