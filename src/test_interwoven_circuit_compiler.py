@@ -12,6 +12,11 @@ compiler.cx_list = cx_list
 
 
 def test_order_x_stabilizers():
+    x_stabilizer_queue = {'X0': [3, 0]}
+    ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
+
+    assert ordered_x_stabilizers == [{('X0', 3)}, {('X0', 0)}]
+
     x_stabilizer_queue = {'X0': [3, 0, 4, 1], 'X1': [
         7, 4, 8, 5], 'X2': [6, 3], 'X3': [2, 5]}
     ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
@@ -19,19 +24,49 @@ def test_order_x_stabilizers():
     assert ordered_x_stabilizers == [{('X3', 2), ('X0', 3), ('X1', 7), ('X2', 6)}, {(
         'X1', 4), ('X0', 0), ('X2', 3), ('X3', 5)}, {('X1', 8), ('X0', 4)}, {('X0', 1), ('X1', 5)}]
 
+    x_stabilizer_queue = {'X0': [0, 2, 1], 'X1': [0, 2, 1]}
+    ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
+
+    assert ordered_x_stabilizers == [
+        {('X0', 0)}, {('X1', 0), ('X0', 2)}, {('X1', 2), ('X0', 1)}, {('X1', 1)}]
+
 
 def test_build_stabilizer_queues():
     x_queue, z_queue = compiler.build_stabilizer_queues(
         code.generate_cx_list())
     assert x_queue == {'X0': [3, 0, 4, 1], 'X1': [
-        7, 4, 8, 5], 'X2': [6, 3], 'X3': [2, 5]}
+        7, 4, 8,  5], 'X2': [6, 3], 'X3': [2, 5]}
     assert z_queue == {'Z0': [2, 1, 5, 4], 'Z1': [
         4, 3, 7, 6], 'Z2': [1, 0], 'Z3': [8, 7]}
+
+
+def test_add_z_stabilizer():
+    # also write a test for ordering of this case
+    cx_list = [{('X0', 0), }, {('X0', 2), ('X1', 0)},
+               {('X0', 1), ('X1', 2)}, {('X1', 1)}]
+
+    z_stab_name = 'Z0'
+    z_stab_queue = [2, 1]
+
+    cx_list_with_z_stab = compiler.add_z_stabilizer(
+        z_stab_name, z_stab_queue, cx_list)
+
+    expected_cx_list = [{('X0', 0), ('Z0', 2)},
+                        {('X0', 2), ('X1', 0), ('Z0', 1)},
+                        {('X0', 1), ('X1', 2)},
+                        {('X1', 1)}]
+
+    assert cx_list_with_z_stab == expected_cx_list
+
+
+test_add_z_stabilizer()
 
 
 def test_interweave_cxs():
     compiler.compile_strategy = 'x_z_in_sequence'
     interwoven_cx_list = compiler.interweave_cxs(cx_list)
+    print(interwoven_cx_list)
+
     assert len(interwoven_cx_list) == 8
 
 
