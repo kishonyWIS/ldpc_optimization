@@ -39,15 +39,23 @@ def test_build_stabilizer_queues():
         4, 3, 7, 6], 'Z2': [1, 0], 'Z3': [8, 7]}
 
 
+def test_find_intersecting_stabilizers():
+    intersecting_stabs = compiler.find_intersecting_stabilizers([1, 2, 4, 5])
+    assert intersecting_stabs == {'X0': {1, 4}, 'X1': {4, 5}, 'X3': {2, 5}}
+
+
 def test_add_z_stabilizer():
-    # also write a test for ordering of this case
+    # This is adding a Z stabilizer that doesn't lead
+    # to a non-deterministic detector
     cx_list = [{('X0', 0), }, {('X0', 2), ('X1', 0)},
                {('X0', 1), ('X1', 2)}, {('X1', 1)}]
-
+    compiler.code.x_stabilizers = [[0, 2, 1], [0, 2, 1]]
     z_stab_name = 'Z0'
     z_stab_queue = [2, 1]
     compiler.qubits_used = [{'X0', 0}, {
         'X0', 2, 'X1', 0}, {'X0', 1, 'X1', 2, 'X1', 1}]
+    compiler.timestep_of_gates = {('X0', 0): 0, ('X0', 2): 1, ('X1', 0): 1,
+                                  ('X0', 1): 2, ('X1', 2): 2, ('X1', 1): 3}
     cx_list_with_z_stab = compiler.add_z_stabilizer(
         z_stab_name, z_stab_queue, cx_list)
 
@@ -57,6 +65,26 @@ def test_add_z_stabilizer():
                         {('X1', 1)}]
     assert cx_list_with_z_stab == expected_cx_list
 
+    # This should trigger a non-deterministic detector
+    cx_list = [{('X0', 0), ('X1', 3)},
+               {('X0', 1), ('X1', 2)},
+               {('X0', 2), ('X1', 1)}]
+
+    z_stab_name = 'Z0'
+    z_stab_queue = [1, 2]
+
+    compiler.qubits_used = [{'X0', 0, 'X1', 3},
+                            {'X0', 1, 'X1', 2}, {'X0', 2, 'X1', 1}]
+    cx_list_with_z_stab = compiler.add_z_stabilizer(
+        z_stab_name, z_stab_queue, cx_list)
+
+    expected_cx_list = [{(1, 'Z0')}, {('X0', 0), (2, 'Z0'), ('X1', 3)}, {
+        ('X0', 1), ('X1', 2)}, {('X0', 2), ('X1', 1)}]
+
+    assert expected_cx_list == cx_list_with_z_stab
+
+
+# TODO fill surface code example.
 
 def test_interweave_cxs():
     compiler.compile_strategy = 'x_z_in_sequence'
