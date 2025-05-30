@@ -13,8 +13,9 @@ compiler.cx_list = cx_list
 
 def test_order_x_stabilizers():
     x_stabilizer_queue = {'X0': [3, 0]}
-    ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
 
+    ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
+    print(ordered_x_stabilizers, 'ordered_x_stabilizers')
     assert ordered_x_stabilizers == [{('X0', 3)}, {('X0', 0)}]
 
     x_stabilizer_queue = {'X0': [3, 0, 4, 1], 'X1': [
@@ -26,9 +27,12 @@ def test_order_x_stabilizers():
 
     x_stabilizer_queue = {'X0': [0, 2, 1], 'X1': [0, 2, 1]}
     ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
-
+    print(ordered_x_stabilizers)
     assert ordered_x_stabilizers == [
         {('X0', 0)}, {('X1', 0), ('X0', 2)}, {('X1', 2), ('X0', 1)}, {('X1', 1)}]
+
+
+test_order_x_stabilizers()
 
 
 def test_build_stabilizer_queues():
@@ -59,7 +63,7 @@ def test_add_z_stabilizer():
     assert cx_list_with_z_stab == expected_cx_list
 
 
-test_add_z_stabilizer()
+# test_add_z_stabilizer()
 
 
 def test_interweave_cxs():
@@ -70,7 +74,7 @@ def test_interweave_cxs():
     assert len(interwoven_cx_list) == 8
 
 
-test_interweave_cxs()
+# test_interweave_cxs()
 
 # def test_order_CNOTS_rsc():
 #     code = RotatedSurfaceCode(L=3, ordering='optimal')

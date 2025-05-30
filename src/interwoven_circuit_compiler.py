@@ -60,31 +60,39 @@ class InterwovenCircuitCompiler():
         """
 
         self.qubits_used = list({},)
-        auxiliary_qubits_to_compile = set(x_stabilizer_queue.keys())
         interwoven_cx_list = []
 
-        while auxiliary_qubits_to_compile:
-            for auxiliary_qubit in list(auxiliary_qubits_to_compile):
+        while x_stabilizer_queue:
+            for auxiliary_qubit in list(x_stabilizer_queue.keys()):
+                # If the auxiliary qubit has no more data qubits, remove it from the queue
                 if not x_stabilizer_queue[auxiliary_qubit]:
-                    auxiliary_qubits_to_compile.remove(auxiliary_qubit)
+                    del x_stabilizer_queue[auxiliary_qubit]
                     continue
 
                 next_data_qubit = x_stabilizer_queue[auxiliary_qubit][0]
+
+                # last_used is one timestep after the last time the auxiliary qubit was used
                 last_used = self.find_when_last_used(auxiliary_qubit)
-                print(last_used, 'last used?')
+
+                # Find the earliest timestep after last_used when the next data qubit is available
                 gate_timestep = self.find_earliest_availability(
                     [next_data_qubit], last_used)
-                print(gate_timestep, 'gate_timestep?')
+
                 # Ensure interwoven_cx_list is long enough
                 while len(interwoven_cx_list) <= gate_timestep:
                     interwoven_cx_list.append(set())
                     self.qubits_used.append(set())
+
+                # Add the CNOT to the interwoven list
                 interwoven_cx_list[gate_timestep].add(
                     (auxiliary_qubit, next_data_qubit)
                 )
-                self.qubits_used[gate_timestep].add(auxiliary_qubit)
-                self.qubits_used[gate_timestep].add(next_data_qubit)
 
+                # Mark the qubits as used in this timestep
+                self.qubits_used[gate_timestep].update(
+                    [auxiliary_qubit, next_data_qubit])
+
+                # Remove the data qubit from the queue
                 x_stabilizer_queue[auxiliary_qubit].pop(0)
         return interwoven_cx_list
 
