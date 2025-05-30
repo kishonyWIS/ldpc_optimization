@@ -137,16 +137,22 @@ class InterwovenCircuitCompiler():
     def add_z_stabilizer(self, z_stab_name: str, z_stab_queue: list, cx_list: list) -> None:
         # TODO
         for data_qubit in z_stab_queue:
+            # first find when auxiliary qubit is last used
+            last_used = self.find_when_last_used(z_stab_name)
+
             earliest_availability = self.find_earliest_availability(
-                data_qubit, self.data_qubits_used)
+                [data_qubit], last_used)
 
             cx_list[earliest_availability].add(
                 (data_qubit, z_stab_name)
             )
-            self.data_qubits_used[earliest_availability].add(
-                data_qubit)
-            self.ancillary_qubits_used[earliest_availability].add(
-                z_stab_name)
+            self.qubits_used[earliest_availability].update((
+                data_qubit, z_stab_name))
 
+        return (cx_list)
+
+
+"""
     def test_commutativity():
         pass
+"""

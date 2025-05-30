@@ -15,7 +15,6 @@ def test_order_x_stabilizers():
     x_stabilizer_queue = {'X0': [3, 0]}
 
     ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
-    print(ordered_x_stabilizers, 'ordered_x_stabilizers')
     assert ordered_x_stabilizers == [{('X0', 3)}, {('X0', 0)}]
 
     x_stabilizer_queue = {'X0': [3, 0, 4, 1], 'X1': [
@@ -27,12 +26,8 @@ def test_order_x_stabilizers():
 
     x_stabilizer_queue = {'X0': [0, 2, 1], 'X1': [0, 2, 1]}
     ordered_x_stabilizers = compiler.order_x_stabilizers(x_stabilizer_queue)
-    print(ordered_x_stabilizers)
     assert ordered_x_stabilizers == [
         {('X0', 0)}, {('X1', 0), ('X0', 2)}, {('X1', 2), ('X0', 1)}, {('X1', 1)}]
-
-
-test_order_x_stabilizers()
 
 
 def test_build_stabilizer_queues():
@@ -51,19 +46,16 @@ def test_add_z_stabilizer():
 
     z_stab_name = 'Z0'
     z_stab_queue = [2, 1]
-
+    compiler.qubits_used = [{'X0', 0}, {
+        'X0', 2, 'X1', 0}, {'X0', 1, 'X1', 2, 'X1', 1}]
     cx_list_with_z_stab = compiler.add_z_stabilizer(
         z_stab_name, z_stab_queue, cx_list)
 
-    expected_cx_list = [{('X0', 0), ('Z0', 2)},
-                        {('X0', 2), ('X1', 0), ('Z0', 1)},
+    expected_cx_list = [{('X0', 0), (2, 'Z0')},
+                        {('X0', 2), ('X1', 0), (1, 'Z0')},
                         {('X0', 1), ('X1', 2)},
                         {('X1', 1)}]
-
     assert cx_list_with_z_stab == expected_cx_list
-
-
-# test_add_z_stabilizer()
 
 
 def test_interweave_cxs():
