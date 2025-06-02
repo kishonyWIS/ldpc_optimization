@@ -1,7 +1,12 @@
 import stim
 
 
-def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
+def add_noise_to_circuit(circ_in,
+                         noisy_qubits,
+                         p_idle=0.001,
+                         p_cx=0.01,
+                         p_measurement=0.0,
+                         p_initialization=0.0):
     """
     Take a Stim circuit (with operations: M, MX, R, RX, CX) and a collection of noisy qubits,
     and return a new Stim circuit with noise operations inserted.
@@ -40,23 +45,37 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
         for q in op.targets_copy():
             all_qubits.add(q.value)
     qubits_last_used = {q: 0 for q in all_qubits}
-
+    t = 1
     for op in circ_in:
         targets = op.targets_copy()
         args = op.gate_args_copy()
         # Split operations that have multiple targets.
-        if op.name in {"R", "RX", "M", "MX"}:
+
+        if op.name in {"M", "MX"}:
             for target in targets:
                 q = target.value
-                t = qubits_last_used[q] + 1
+#                t = qubits_last_used[q] + 1
                 # For each noisy qubit, add idling noise for idle_time = t - last_used - 1.
                 idle_time = t - qubits_last_used[q] - 1
                 if q in noisy_qubits and idle_time > 0 and p_idle > 0 and qubits_last_used[q] > 0:
                     new_circ.append_operation(
                         "DEPOLARIZE1", target, idle_time*p_idle)
                     total_idling_time += idle_time
-                new_circ.append_operation(op.name, target)
+                if p_measurement > 0:
+                    new_circ.append_operation(op.name, target, p_measurement)
+                else:
+                    new_circ.append_operation(op.name, target)
                 qubits_last_used[q] = t
+        elif op.name in {"R", "RX"}:
+            #            for target in targets:
+         #               q = target.value
+            new_circ.append_operation(op.name, targets)
+            if p_initialization > 0:
+                new_circ.append_operation(
+                    "DEPOLARIZE1", targets,  p_initialization)
+            for target in targets:
+                qubits_last_used[target.value] = t
+
         elif op.name == "CX":
             # Assume op.targets[0] is control, and subsequent are targets.
             for i in range(0, len(targets), 2):
@@ -75,7 +94,10 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 new_circ.append_operation("CX", [q_c, q_t])
                 qubits_last_used[q_c] = t
                 qubits_last_used[q_t] = t
-        elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR', 'DETECTOR', 'OBSERVABLE_INCLUDE']:
+        elif op.name == 'TICK':
+            t += 1
+            new_circ.append_operation("TICK")
+        elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR', 'DETECTOR', 'OBSERVABLE_INCLUDE', 'TICK']:
             # don't count idling time for these operations, just add them to the circuit
             new_circ.append_operation(op.name, targets, args)
         else:
@@ -84,21 +106,3 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
 #    print(f"Total idling time: {total_idling_time}")
 
     return new_circ, total_idling_time
-
-
-# --- Example usage ---
-if __name__ == "__main__":
-
-    # Create a simple example circuit.
-    circ_in = stim.Circuit()
-    circ_in.append_operation("R", [0, 1])
-    circ_in.append_operation("RX", [2])
-    # CX with control 0, targets 1 and 2 (will be split)
-    circ_in.append_operation("CX", [0, 1, 1, 2])
-    circ_in.append_operation("M", [0, 1, 2])
-
-    # Suppose qubits 0 and 1 are noisy.
-    noisy_qubits = {0, 1, 2}
-
-    new_circ = add_noise_to_circuit(circ_in, noisy_qubits)
-    print(new_circ)

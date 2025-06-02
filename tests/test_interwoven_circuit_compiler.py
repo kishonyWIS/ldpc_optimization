@@ -87,21 +87,8 @@ def test_add_z_stabilizer():
 def test_interweave_cxs():
     compiler.compile_strategy = 'x_z_in_sequence'
     interwoven_cx_list = compiler.interweave_cxs(cx_list)
-    print(interwoven_cx_list)
-
     assert len(interwoven_cx_list) == 8
 
-
-# test_interweave_cxs()
-
-# def test_order_CNOTS_rsc():
-#     code = RotatedSurfaceCode(L=3, ordering='optimal')
-
-#     cx_list = code.generate_cx_list()
-#     compiler = InterwovenCircuitCompiler(code, cx_list)
-
-#     # write a test to compare to.
-# # test_order_CNOTS_rsc()
 
 def test_end_to_end():
     code = RotatedSurfaceCode(L=3, ordering='optimal')
@@ -110,68 +97,3 @@ def test_end_to_end():
     compiler.circ.detector_error_model()
     assert compiler.circ.num_observables == 1
     assert compiler.circ.num_detectors == 5*8 + 4
-
-#   interwoven_cx_list = compiler.interweave_cxs(cx_list)
-#  print(interwoven_cx_list)
-
-#    assert len(interwoven_cx_list) == 8
-
-# def test_order_CNOTS_commuting():
-#     cx_list = [
-#         (0, 'X0'),
-#         (1, 'X0'),
-#         (2, 'X0'),
-#         (3, 'X0'),
-#         (0, 'Z0'),
-#         (1, 'Z0'),
-#         (2, 'Z1'),
-#         (3, 'Z1')
-#     ]
-#     compiler = InterwovenCircuitCompiler(None, cx_list)
-
-#     reordered_cx_list = {0: {(0, 'X0')},
-#                          1: {(1, 'X0'), (0, 'Z0')},
-#                          2: {(2, 'X0'), (1, 'Z0')},
-#                          3: {(3, 'X0'), (2, 'Z0')},
-#                          4: {(3, 'Z1')}}
-
-
-# def test_8_gate_circuit():
-#     cx_list = [
-
-#         (0, 'X0'),
-#         (1, 'X0'),
-#         (2, 'X0'),
-#         (3, 'X0'),
-#         (0, 'Z0'),
-#         (1, 'Z0'),
-#         (2, 'Z1'),
-#         (3, 'Z1')
-#     ]
-#     """
-#     QUBIT_COORDS(0, 0) 0
-#     QUBIT_COORDS(1, 0) 1
-#     QUBIT_COORDS(2, 0) 2
-#     QUBIT_COORDS(3, 0) 3
-#     QUBIT_COORDS(4, 0) 4
-#     QUBIT_COORDS(5, 0) 5
-#     R 0 1 2 3 5
-#     RX 4
-#     TICK
-#     CX 4 0
-#     TICK
-#     CX 4 1 0 5
-#     TICK
-#     CX 4 2 1 5
-#     TICK
-#     CX 4 3 2 5
-#     TICK
-#     CX 3 5
-#     TICK
-#     M 0 1 2 3 5
-#     MX 4
-#     """
-
-
-# test_8_gate_circuit()
-# def test_d3_surface_code()
