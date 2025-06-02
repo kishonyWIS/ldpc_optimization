@@ -1,3 +1,5 @@
+from typing import Dict
+import stim
 from src.cx_list_from_stabilizers_in_sequence import StabilizerCode
 from collections import defaultdict
 
@@ -6,14 +8,24 @@ class InterwovenCircuitCompiler():
     def __init__(self,
                  code: StabilizerCode,
                  cx_list: list,
-                 compile_strategy: str = 'x_z_in_sequence'):
+                 compile_strategy: str = 'x_z_in_sequence',
+                 basis: str = 'Z',
+                 both_detectors: bool = True,
+                 num_iterations: int = 1
+                 ):
         """
         compile_strategy: 'x_z_in_sequence' or 'x_z_in_parallel'
-
+        ancilla_type: Mapping ancilla id -> "X" or "Z".
+        data_mapping: Mapping data qubit id -> physical index.
+        ancilla_mapping: Mapping ancilla id -> physical index.
         """
         self.code = code
         self.compile_strategy = compile_strategy
         self.interwoven_cx_list = self.interweave_cxs(cx_list)
+        self.basis = basis  # 'X' or 'Z'
+        self.both_detectors = both_detectors
+        self.num_iterations = num_iterations
+        self.circ = self.generate_stim_circuit()
 
     def interweave_cxs(self, cx_list: list) -> list:
         x_stabilizers_queue, z_stabilizers_queue = self.build_stabilizer_queues(
@@ -24,6 +36,7 @@ class InterwovenCircuitCompiler():
             interwoven_cx_list.extend(z_cx_list)
         elif self.compile_strategy == 'x_z_in_parallel':
             # TODO should I flip the interwoven cx list? I think so.
+
             for z_stabilizer_queue in z_stabilizers_queue.values():
                 self.add_z_stabilizer(
                     z_stabilizer_queue, interwoven_cx_list)
@@ -201,3 +214,135 @@ class InterwovenCircuitCompiler():
                     self.timestep_of_gates[key] += 1
         cx_list = self.add_gates(gates_to_add, cx_list)
         return cx_list
+
+    def create_circuit_layer(self,
+                             circ: stim.Circuit,
+                             first_round: bool,
+                             x_detectors: bool,
+                             z_detectors: bool) -> list:
+        """
+        Create a circuit layer from the interwoven CNOT list.
+        This is a list of sets, where each set contains the CNOTs that can be executed in that cycle.
+        """
+        for a_label, a_index in self.code.ancilla_mapping.items():
+            circ.append(
+                'R' if a_label[0] == 'Z' else 'RX',
+                a_index
+            )
+
+        circ.append('TICK')
+        for timestep, cx_gates in enumerate(self.interwoven_cx_list):
+            for gate in cx_gates:
+                auxiliary_qubit, data_qubit = gate
+                if self.code.ancilla_type[auxiliary_qubit] == 'X':
+                    circ.append('CX', [
+                        self.code.data_mapping[data_qubit], self.code.ancilla_mapping[auxiliary_qubit]])
+                else:
+                    circ.append('CX', [
+                        self.code.ancilla_mapping[auxiliary_qubit], self.code.data_mapping[data_qubit]])
+            circ.append('TICK')
+
+        for a_label, a_index in self.code.ancilla_mapping.items():
+            circ.append(
+                'M' if a_label[0] == 'Z' else 'MX',
+                a_index
+            )
+
+        if first_round:
+
+            if self.basis == 'Z':
+                for i, (a_label, a_index) in enumerate(self.code.ancilla_mapping.items()):
+                    if a_label[0] == 'Z' and z_detectors:
+                        rec_targets = [stim.target_rec(
+                            i - len(self.code.ancilla_mapping))]
+                        circ.append(
+                            'DETECTOR', rec_targets)
+            else:
+                for i, (a_label, a_index) in enumerate(self.code.ancilla_mapping.items()):
+                    if a_label[0] == 'X' and x_detectors:
+                        rec_targets = [stim.target_rec(
+                            i - len(self.code.ancilla_mapping))]
+                        circ.append(
+                            'DETECTOR', rec_targets)
+        else:
+            if x_detectors:
+                for i, (a_label, a_index) in enumerate(self.code.ancilla_mapping.items()):
+                    if a_label[0] == 'X' and z_detectors:
+                        rec_targets = [stim.target_rec(
+                            i - len(self.code.ancilla_mapping)),  stim.target_rec(i - 2*len(self.code.ancilla_mapping))]
+                        circ.append(
+                            'DETECTOR', rec_targets)
+            if z_detectors:
+                for i, (a_label, a_index) in enumerate(self.code.ancilla_mapping.items()):
+                    if a_label[0] == 'Z' and x_detectors:
+                        rec_targets = [stim.target_rec(
+                            i - len(self.code.ancilla_mapping)), stim.target_rec(i - 2*len(self.code.ancilla_mapping))]
+                        circ.append(
+                            'DETECTOR', rec_targets)
+        return (circ)
+
+    def generate_stim_circuit(self) -> stim.Circuit:
+        """
+        Generate a Stim circuit from the interwoven CNOT list.
+        """
+        if self.both_detectors == True:
+            include_x_detectors = True
+            include_z_detectors = True
+        else:
+            include_x_detectors = self.basis == 'X'
+            include_z_detectors = self.basis == 'Z'
+        data_indices = [self.code.data_mapping[q]
+                        for q in sorted(self.code.data_mapping.keys())]
+        head_circ = stim.Circuit()
+        head_circ.append(
+            'R' if self.basis == 'Z' else 'RX', data_indices)
+        self.create_circuit_layer(
+            head_circ,
+            first_round=True,
+            x_detectors=include_x_detectors,
+            z_detectors=include_z_detectors
+        )
+
+        body_circ = stim.Circuit()
+
+        self.create_circuit_layer(
+            body_circ,
+            first_round=False,
+            x_detectors=include_x_detectors,
+            z_detectors=include_z_detectors
+        )
+
+        tail_circ = stim.Circuit()
+        tail_circ.append(
+            f'M{self.basis}', data_indices)
+        for i, x_stab in enumerate(self.code.x_stabilizers):
+
+            rec_targets = [stim.target_rec(
+                -1*self.code.n + q_i) for q_i in x_stab]
+            rec_targets.append(stim.target_rec(
+                -1*self.code.n - len(self.code.ancilla_mapping) + i))
+            tail_circ.append('DETECTOR', rec_targets)
+        for i, z_stab in enumerate(self.code.z_stabilizers):
+            rec_targets = [stim.target_rec(
+                -1*self.code.n + q_i) for q_i in z_stab]
+            rec_targets.append(stim.target_rec(
+                -1*self.code.n - len(self.code.ancilla_mapping) + i + len(self.code.x_stabilizers)))
+            tail_circ.append('DETECTOR', rec_targets)
+
+        if self.basis == 'Z':
+            logicals = self.code.lz
+        else:
+            logicals = self.code.lx
+
+        for i_logical, logical in enumerate(logicals):
+            qubits_in_logical = [i for i in range(
+                self.code.n) if logical[i] == 1]
+
+            rec_targets = [stim.target_rec(
+                i - self.code.n) for i in qubits_in_logical]
+
+            tail_circ.append(
+                'OBSERVABLE_INCLUDE', rec_targets, i_logical)
+        final_circuit = head_circ + \
+            (self.num_iterations-1)*body_circ + tail_circ
+        return final_circuit

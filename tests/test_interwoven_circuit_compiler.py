@@ -84,8 +84,6 @@ def test_add_z_stabilizer():
     assert expected_cx_list == cx_list_with_z_stab
 
 
-# TODO fill surface code example.
-
 def test_interweave_cxs():
     compiler.compile_strategy = 'x_z_in_sequence'
     interwoven_cx_list = compiler.interweave_cxs(cx_list)
@@ -105,6 +103,18 @@ def test_interweave_cxs():
 #     # write a test to compare to.
 # # test_order_CNOTS_rsc()
 
+def test_end_to_end():
+    code = RotatedSurfaceCode(L=3, ordering='optimal')
+    cx_list = code.generate_cx_list()
+    compiler = InterwovenCircuitCompiler(code, cx_list, num_iterations=5)
+    compiler.circ.detector_error_model()
+    assert compiler.circ.num_observables == 1
+    assert compiler.circ.num_detectors == 5*8 + 4
+
+#   interwoven_cx_list = compiler.interweave_cxs(cx_list)
+#  print(interwoven_cx_list)
+
+#    assert len(interwoven_cx_list) == 8
 
 # def test_order_CNOTS_commuting():
 #     cx_list = [
