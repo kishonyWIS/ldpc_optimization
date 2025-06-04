@@ -77,7 +77,7 @@ def add_noise_to_circuit(circ_in, noisy_qubits, p_idle=0.001, p_cx=0.01):
                 qubits_last_used[q_t] = t
         elif op.name in ['DEPOLARIZE1', 'DEPOLARIZE2', 'X_ERROR', 'Z_ERROR', 'DETECTOR', 'OBSERVABLE_INCLUDE']:
             # don't count idling time for these operations, just add them to the circuit
-            new_circ.append_operation(op.name, targets, args)
+            new_circ.append_operation(op.name, targets, args, tag=op.tag)
         else:
             raise NotImplementedError
 

@@ -1,7 +1,7 @@
 import stim
 import numpy as np
 from typing import List, Tuple, Dict
-from .noisy_cx_circuit import add_noise_to_circuit
+from src.noisy_cx_circuit import add_noise_to_circuit
 
 # A CX gate is represented as a tuple (q, a)
 CXGate = Tuple[str, str]
@@ -21,7 +21,7 @@ def memory_experiment_circuit_from_cx_list(
         number_of_cycles: int = 1,
         flag: bool = True,
         p_phenomenological_error: float = 0.0,
-        p_measurement_error: float = 0.0,
+        p_spam_error: float = 0.0,
         hook_errors={}  # ancilla_id: [(after_cx_number, p_error),...]
 ) -> stim.Circuit:
     """
@@ -121,7 +121,7 @@ def memory_experiment_circuit_from_cx_list(
                                                                     m_counter,
                                                                     measurement_indexes,
                                                                     p_phenomenological_error=p_phenomenological_error if noise else 0,
-                                                                    p_measurement_error=0,
+                                                                    p_spam_error=p_spam_error if noise else 0,
                                                                     hook_errors=hook_errors if noise else {})
         if detectors:
             noiseless_circ = add_detectors(
@@ -175,7 +175,7 @@ def memory_experiment_circuit_from_cx_list(
         circ.append_operation("OBSERVABLE_INCLUDE",
                               [stim.target_rec(i - n)
                                for i in qubits_in_logical],
-                              i_logical + circ.num_observables)
+                              circ.num_observables)
 
     return circ
 
@@ -190,7 +190,7 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
                                     measurement_counter,
                                     measurement_indexes,
                                     p_phenomenological_error: float = 0.0,
-                                    p_measurement_error: float = 0.0,
+                                    p_spam_error: float = 0.0,
                                     # ancilla_id: (after_cx_number, p_hook_error)
                                     hook_errors={}
                                     ):
@@ -198,7 +198,7 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
     data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
     if p_phenomenological_error > 0:
         cycle.append_operation(
-            "DEPOLARIZE1", data_indices, p_phenomenological_error)
+            "DEPOLARIZE1", data_indices, p_phenomenological_error, tag='phenomenological')
 
     for idx, (q, a) in enumerate(cx_list):
         # For this ancilla, determine if this is the first or last occurrence.
@@ -215,12 +215,18 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
             if ancilla_type[a] == "X":
                 # For X stabilizers, reset the ancilla via RX.
                 cycle.append_operation("RX", [ancilla_mapping[a]])
+                if p_spam_error > 0:
+                    cycle.append_operation(
+                        "Z_ERROR", [ancilla_mapping[a]], p_spam_error, tag=f'spam {a}')
                 if flag:
                     # Prepare the flag qubit (explicitly using flag_mapping).
                     cycle.append_operation("R", [flag_mapping[a]])
             elif ancilla_type[a] == "Z":
                 # For Z stabilizers, reset the ancilla via R.
                 cycle.append_operation("R", [ancilla_mapping[a]])
+                if p_spam_error > 0:
+                    cycle.append_operation(
+                        "X_ERROR", [ancilla_mapping[a]], p_spam_error, tag=f'spam {a}')
                 if flag:
                     cycle.append_operation("RX", [flag_mapping[a]])
         # Append the CX gate.
@@ -243,7 +249,7 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
         # insert hook error on ancilla if on the right position
         p_hook_error = hook_idx_to_p.get(idx, 0)
         if p_hook_error > 0:
-            cycle.append_operation("DEPOLARIZE1", [aq], p_hook_error)
+            cycle.append_operation("DEPOLARIZE1", [aq], p_hook_error, tag=a)
         # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
         if idx == last_idx:
             if flag:
@@ -258,17 +264,17 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
                         measurement_counter)
                     measurement_counter += 1
             if ancilla_type[a] == "X":
-                if p_measurement_error > 0:
+                if p_spam_error > 0:
                     cycle.append_operation(
-                        "Z_ERROR", [aq], p_measurement_error)
+                        "Z_ERROR", [aq], p_spam_error, tag=f'spam {a}')
                 cycle.append_operation("MX", [aq])
                 measurement_indexes['X_syndromes'][a].append(
                     measurement_counter)
                 measurement_counter += 1
             elif ancilla_type[a] == "Z":
-                if p_measurement_error > 0:
+                if p_spam_error > 0:
                     cycle.append_operation(
-                        "X_ERROR", [aq], p_measurement_error)
+                        "X_ERROR", [aq], p_spam_error, tag=f'spam {a}')
                 cycle.append_operation("M", [aq])
                 measurement_indexes['Z_syndromes'][a].append(
                     measurement_counter)
@@ -345,4 +351,4 @@ if __name__ == "__main__":
 
     # write test for distance
 
-    print(flag_circ)
+    print(flag_circ.num_observables)
