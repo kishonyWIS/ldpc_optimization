@@ -20,9 +20,7 @@ def memory_experiment_circuit_from_cx_list(
         both_detectors: bool = False,
         number_of_cycles: int = 1,
         flag: bool = True,
-        p_phenomenological_error: float = 0.0,
-        p_spam_error: float = 0.0,
-        hook_errors={}  # ancilla_id: [(after_cx_number, p_error),...]
+        noisy_qubits = None,
 ) -> stim.Circuit:
     """
     Build a Stim circuit from a global cx_list ordering (assumed to be the ordering for one measurement round)
@@ -57,7 +55,6 @@ def memory_experiment_circuit_from_cx_list(
       x_detectors, z_detectors: Whether to add detector operations for X or Z stabilizers.
       number_of_cycles: Number of cycles.
       flag: Whether to insert flag operations.
-      p_phenomenological_error: Probability of phenomenological errors before syndrome extraction on data qubits.
 
     Returns:
       A tuple (circ, circ_without_flag_observables) where:
@@ -66,7 +63,8 @@ def memory_experiment_circuit_from_cx_list(
     """
     data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
     n = len(data_indices)
-    noisy_qubits = set(data_mapping.values()) | set(ancilla_mapping.values())
+    if noisy_qubits is None:
+        noisy_qubits = set(data_mapping.values()) | set(ancilla_mapping.values())
     # Record measurement indices per ancilla.
     measurement_indexes = {
         'X_syndromes': {a: [] for a, t in ancilla_type.items() if t == "X"},
@@ -119,10 +117,7 @@ def memory_experiment_circuit_from_cx_list(
                                                                     flags,
                                                                     flag_mapping,
                                                                     m_counter,
-                                                                    measurement_indexes,
-                                                                    p_phenomenological_error=p_phenomenological_error if noise else 0,
-                                                                    p_spam_error=p_spam_error if noise else 0,
-                                                                    hook_errors=hook_errors if noise else {})
+                                                                    measurement_indexes)
         if detectors:
             noiseless_circ = add_detectors(
                 noiseless_circ, m_counter, cycle)
@@ -189,44 +184,25 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
                                     flag_mapping,
                                     measurement_counter,
                                     measurement_indexes,
-                                    p_phenomenological_error: float = 0.0,
-                                    p_spam_error: float = 0.0,
-                                    # ancilla_id: (after_cx_number, p_hook_error)
-                                    hook_errors={}
                                     ):
     cycle = stim.Circuit()
     data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
-    if p_phenomenological_error > 0:
-        cycle.append_operation(
-            "DEPOLARIZE1", data_indices, p_phenomenological_error, tag='phenomenological')
 
     for idx, (q, a) in enumerate(cx_list):
         # For this ancilla, determine if this is the first or last occurrence.
         first_idx = min(ancilla_positions_in_cx_list[a])
         last_idx = max(ancilla_positions_in_cx_list[a])
-        hook_idx_to_p = {}
-        if a in hook_errors:
-            hook_idx_to_p = {}
-            for hook_after_cxs_number, p_hook_error in hook_errors[a]:
-                hook_idx_to_p[ancilla_positions_in_cx_list[a]
-                              [hook_after_cxs_number]] = p_hook_error
         # On the first occurrence, reset the ancilla and prepare the flag qubit if needed.
         if idx == first_idx:
             if ancilla_type[a] == "X":
                 # For X stabilizers, reset the ancilla via RX.
                 cycle.append_operation("RX", [ancilla_mapping[a]])
-                if p_spam_error > 0:
-                    cycle.append_operation(
-                        "Z_ERROR", [ancilla_mapping[a]], p_spam_error, tag=f'spam {a}')
                 if flag:
                     # Prepare the flag qubit (explicitly using flag_mapping).
                     cycle.append_operation("R", [flag_mapping[a]])
             elif ancilla_type[a] == "Z":
                 # For Z stabilizers, reset the ancilla via R.
                 cycle.append_operation("R", [ancilla_mapping[a]])
-                if p_spam_error > 0:
-                    cycle.append_operation(
-                        "X_ERROR", [ancilla_mapping[a]], p_spam_error, tag=f'spam {a}')
                 if flag:
                     cycle.append_operation("RX", [flag_mapping[a]])
         # Append the CX gate.
@@ -247,9 +223,6 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
             if flag and idx == first_idx:
                 cycle.append_operation("CX", [flag_mapping[a], aq])
         # insert hook error on ancilla if on the right position
-        p_hook_error = hook_idx_to_p.get(idx, 0)
-        if p_hook_error > 0:
-            cycle.append_operation("DEPOLARIZE1", [aq], p_hook_error, tag=a)
         # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
         if idx == last_idx:
             if flag:
@@ -264,17 +237,11 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
                         measurement_counter)
                     measurement_counter += 1
             if ancilla_type[a] == "X":
-                if p_spam_error > 0:
-                    cycle.append_operation(
-                        "Z_ERROR", [aq], p_spam_error, tag=f'spam {a}')
                 cycle.append_operation("MX", [aq])
                 measurement_indexes['X_syndromes'][a].append(
                     measurement_counter)
                 measurement_counter += 1
             elif ancilla_type[a] == "Z":
-                if p_spam_error > 0:
-                    cycle.append_operation(
-                        "X_ERROR", [aq], p_spam_error, tag=f'spam {a}')
                 cycle.append_operation("M", [aq])
                 measurement_indexes['Z_syndromes'][a].append(
                     measurement_counter)

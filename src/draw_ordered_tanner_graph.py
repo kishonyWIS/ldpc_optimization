@@ -1,7 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
-from simultaneous_scheduling import schedule_gates
+from src.simultaneous_scheduling import schedule_gates
 
 
 def draw_cx_list(cx_list, ancilla_type, data_coords=None, ancilla_coords=None):

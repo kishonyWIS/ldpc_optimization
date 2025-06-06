@@ -56,6 +56,7 @@ def find_distance(circuit: stim.Circuit, max_shots = 2**10, max_bp_iterations=10
         error = decoder.decode(syndromes)
         error_weight = sum(error)
         if not all((matrices.check_matrix @ error) % 2 == syndromes):
+            raise Exception
             continue
         if error_weight < distance:
             distance = error_weight
@@ -63,7 +64,14 @@ def find_distance(circuit: stim.Circuit, max_shots = 2**10, max_bp_iterations=10
 
     error_tags = [dem[i].tag for i in np.where(minimal_error)[0]]
 
-    return distance, minimal_error, error_tags
+    error_explanations = []
+    for i in np.where(minimal_error)[0]:
+        new_dem = stim.DetectorErrorModel()
+        new_dem.append(dem[i])
+        explanation = new_circuit.explain_detector_error_model_errors(dem_filter=new_dem)[0]
+        error_explanations.append(explanation)
+
+    return distance, minimal_error, error_tags, error_explanations
 
 if __name__ == '__main__':
     d = 5
