@@ -23,10 +23,11 @@ class StabilizerCode:
         self.z_stabilizers = z_stabilizers
         self.lx = lx
         self.lz = lz
-
         all_qubits = {q for stab in x_stabilizers for q in stab}
         all_qubits |= {q for stab in z_stabilizers for q in stab}
         self.n = max(all_qubits) + 1
+
+        self.ancilla_type, self.data_mapping, self.ancilla_mapping, self.flag_mapping = self.build_mappings()
 
     def generate_cx_list(self):
         """
@@ -38,11 +39,11 @@ class StabilizerCode:
               X stabilizers are processed first, followed by Z stabilizers.
         """
         cx_list = []
-        for ancilla, qubits in zip(self.get_x_ancillas(), self.x_stabilizers):
+        for ancilla, qubits in zip(self._get_x_ancillas(), self.x_stabilizers):
 
             for q in qubits:
                 cx_list.append((q, ancilla))
-        for ancilla, qubits in zip(self.get_z_ancillas(), self.z_stabilizers):
+        for ancilla, qubits in zip(self._get_z_ancillas(), self.z_stabilizers):
             for q in qubits:
                 cx_list.append((q, ancilla))
         return cx_list
@@ -60,15 +61,21 @@ class StabilizerCode:
               Assigns a physical index to each ancilla (starting after the data qubits).
         """
         ancilla_type = {}
-        for a in self.get_x_ancillas():
+        for a in self._get_x_ancillas():
             ancilla_type[a] = "X"
-        for a in self.get_z_ancillas():
+        for a in self._get_z_ancillas():
             ancilla_type[a] = "Z"
-        data_mapping = {q: q for q in range(self.n)}
         ancilla_mapping = {}
+        self.x_ancilla_mapping = {}
+        self.z_ancilla_mapping = {}
+        data_mapping = {q: q for q in range(self.n)}
         flag_mapping = {}
         next_index = self.n
         for ancilla in sorted(ancilla_type.keys()):
+            if ancilla_type[ancilla] == "X":
+                self.x_ancilla_mapping[ancilla] = next_index
+            else:
+                self.z_ancilla_mapping[ancilla] = next_index
             ancilla_mapping[ancilla] = next_index
             next_index += 1
 
@@ -78,11 +85,11 @@ class StabilizerCode:
 
         return ancilla_type, data_mapping, ancilla_mapping, flag_mapping
 
-    def get_x_ancillas(self):
+    def _get_x_ancillas(self):
         """Return a list of ancilla IDs for X stabilizers."""
         return [f"X{i}" for i in range(len(self.x_stabilizers))]
 
-    def get_z_ancillas(self):
+    def _get_z_ancillas(self):
         """Return a list of ancilla IDs for Z stabilizers."""
         return [f"Z{i}" for i in range(len(self.z_stabilizers))]
 

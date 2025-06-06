@@ -16,7 +16,7 @@ def memory_experiment_circuit_from_cx_list(
         logicals: np.ndarray,
         logical_type: str,
         p_cx: float,
-        p_idle: float,
+        p_idle: float = 0,
         both_detectors: bool = False,
         number_of_cycles: int = 1,
         flag: bool = True,
@@ -170,7 +170,7 @@ def memory_experiment_circuit_from_cx_list(
         circ.append_operation("OBSERVABLE_INCLUDE",
                               [stim.target_rec(i - n)
                                for i in qubits_in_logical],
-                              circ.num_observables)
+                              i_logical + circ.num_observables)
 
     return circ
 
@@ -318,4 +318,4 @@ if __name__ == "__main__":
 
     # write test for distance
 
-    print(flag_circ.num_observables)
+    print(flag_circ)
