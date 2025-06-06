@@ -1,4 +1,3 @@
-
 from typing import Dict, List, Tuple
 import sinter
 from copy import deepcopy
@@ -12,6 +11,7 @@ from .permute_single_stabilizer import permute_single_stabilizer_inplace
 import matplotlib.pyplot as plt
 from .cx_list_from_stabilizers_in_sequence import StabilizerCode
 import collections
+import pickle
 
 
 class OptimizerStatus:
@@ -26,6 +26,14 @@ class OptimizerStatus:
 
     def __repr__(self):
         return f"OptimizerStatus(cx_list={self.cx_list}, objective_value={self.objective_value}, objective_error={self.objective_error}, worst_flag={self.worst_flag})"
+
+    def __eq__(self, other):
+        if not isinstance(other, OptimizerStatus):
+            return False
+        return (self.cx_list == other.cx_list and
+                self.objective_value == other.objective_value and
+                self.objective_error == other.objective_error and
+                self.worst_flag == other.worst_flag)
 
 
 class InteractiveCxListOptimizer:
@@ -67,11 +75,27 @@ class InteractiveCxListOptimizer:
         self.cycles_with_noise = cycles_with_noise
         self.decoder = decoder
 
+    def save(self, filename: str):
+        """
+        Save the optimizer state to a file.
+        """
+        with open(filename, 'wb') as f:  # Use 'wb' for binary write
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load_optimizer(filename: str) -> 'InteractiveCxListOptimizer':
+        """
+        Load the optimizer state from a file.
+        """
+        with open(filename, 'rb') as f:  # Use 'rb' for binary read
+            return pickle.load(f)
+
     def measure_logical_error_rate(self,
                                    cx_list: List[CXGate],
                                    max_num_shots: int,
                                    max_num_errors: int,
-                                   flags: bool) -> OptimizerStatus:
+                                   flags: bool,
+                                   num_workers: int = 10) -> OptimizerStatus:
         """
         Build a circuit from the given cx_list and simulate it to obtain a logical error rate.
         The circuit is built by calling memory_experiment_circuit_from_cx_list with arguments:
@@ -95,9 +119,9 @@ class InteractiveCxListOptimizer:
         elif self.experiment_type == "BOTH":
             # Simulate for X and Z separately.
             status_x = self._simulate_circuit(cx_list, self.lx, "X",
-                                              max_num_shots, max_num_errors, flags)
+                                              max_num_shots, max_num_errors, flags, num_workers)
             status_z = self._simulate_circuit(cx_list, self.lz, "Z",
-                                              max_num_shots, max_num_errors, flags)
+                                              max_num_shots, max_num_errors, flags, num_workers)
             E_x = status_x.objective_value
             E_z = status_z.objective_value
             # Combine: overall logical error rate.
@@ -123,7 +147,8 @@ class InteractiveCxListOptimizer:
                                      logicals: np.ndarray,
                                      logical_type: str,
                                      max_num_shots: int,
-                                     max_num_errors: int) -> OptimizerStatus:
+                                     max_num_errors: int,
+                                     num_workers=10) -> OptimizerStatus:
         """
         Helper to build and simulate a circuit with flags using memory_experiment_circuit_from_cx_list.
         """
@@ -143,7 +168,7 @@ class InteractiveCxListOptimizer:
 
         task = sinter.Task(circuit=flag_circ)
         stats = sinter.collect(tasks=[task],
-                               num_workers=10,
+                               num_workers=num_workers,
                                max_shots=max_num_shots,
                                max_errors=max_num_errors,
                                decoders=[self.decoder],
@@ -161,9 +186,10 @@ class InteractiveCxListOptimizer:
 
     def logical_error_rate_with_flags(self, n_shots, observable_error_combos: collections.Counter) -> Tuple[float, float]:
         n_logical_errors = 0
-        for key in observable_error_combos.keys():
-            if key[-1] == 'E':
-                n_logical_errors += observable_error_combos[key]
+        # Vectorized: filter keys ending with 'E' and sum their counts
+        n_logical_errors = sum(
+            count for key, count in observable_error_combos.items() if key[-1] == 'E'
+        )
         logical_error_rate = n_logical_errors / n_shots
         logical_error_rate_error = np.sqrt(
             logical_error_rate * (1 - logical_error_rate) / n_shots)
@@ -176,25 +202,20 @@ class InteractiveCxListOptimizer:
         n_times_flagged = [0] * n_flags
 
         for key, counts in observable_error_combos.items():
-
-            # TODO: implement for multiple logicals
-            if key[-1] == 'E':  # the last entry is the value of the actual logical observable
+            # Only consider keys where the last entry is the logical error
+            if key[-1] == 'E':
                 flag_values = key.split('=')[-1][:-1]
-                cycles = len(flag_values)//n_flags
-
-                # count the number of 'E' in the first n_flags entries
-                for j in range(n_flags):
-                    for i in range(cycles):
-
-                        if flag_values[cycles*j+i] == 'E':
-                            n_times_flagged[j] += counts
+                # Vectorized count: for each flag, count 'E' in its positions across cycles
+                arr = np.frombuffer(flag_values.encode(),
+                                    dtype='S1').reshape(-1, n_flags)
+                n_times_flagged += (arr == b'E').sum(axis=0) * counts
 
         # for i, flag in enumerate(key.split('=')[-1][:-1]):
         #     if flag == 'E':
         #         n_times_flagged[i //
         #                         n_flags] += counts
-        print(f"n_times_flagged: {n_times_flagged}")
-        max_flag_index = n_times_flagged.index(max(n_times_flagged))
+
+        max_flag_index = np.argmax(n_times_flagged)
 
         flag_mapping = list(self.flag_mapping.keys())
         # Find the flag corresponding to the index.
@@ -206,18 +227,19 @@ class InteractiveCxListOptimizer:
                           logical_type: str,
                           max_num_shots: int,
                           max_num_errors: int,
-                          flags) -> OptimizerStatus:
+                          flags: bool,
+                          num_workers: int) -> OptimizerStatus:
         """
         Helper to build and simulate a circuit using memory_experiment_circuit_from_cx_list.
         """
         if flags == True:
             # Use the circuit with flags.
             return self._simulate_circuit_with_flags(cx_list, logicals, logical_type,
-                                                     max_num_shots, max_num_errors)
+                                                     max_num_shots, max_num_errors, num_workers)
         else:
             # Use the circuit without flags.
             return self._simulate_circuit_without_flags(cx_list, logicals, logical_type,
-                                                        max_num_shots, max_num_errors)
+                                                        max_num_shots, max_num_errors, num_workers)
 
     def _simulate_circuit_without_flags(self, cx_list: List[CXGate],
                                         logicals: np.ndarray,
@@ -257,12 +279,14 @@ class InteractiveCxListOptimizer:
 
         return OptimizerStatus(deepcopy(cx_list), logical_error_rate, logical_error_rate_error)
 
-    def start_optimization(self, num_shots: int, num_errors: int, flags: bool):
+    def start_optimization(self, num_shots: int, num_errors: int, flags: bool, num_workers: int = 10):
+
         self.best_cx_list = self.initial_cx_list
         status = self.measure_logical_error_rate(self.best_cx_list,
                                                  max_num_shots=num_shots,
                                                  max_num_errors=num_errors,
-                                                 flags=flags)
+                                                 flags=flags,
+                                                 num_workers=num_workers)
 
         self.optimizer_history.append(status)
         self.best_obj = status.objective_value
@@ -275,8 +299,8 @@ class InteractiveCxListOptimizer:
                          max_num_shots: int,
                          max_num_errors: int,
                          flags: bool,
-                         draw: bool = False,
-                         step_type='edge_pair',
+                         step_type: str = 'edge_pair',
+                         num_workers: int = 10
                          ):
         self.custom_decoders = {
             "bposd": SinterBpOsdDecoder(
@@ -289,7 +313,8 @@ class InteractiveCxListOptimizer:
         if not self.optimizer_history:
             self.start_optimization(num_shots=max_num_shots,
                                     num_errors=max_num_errors,
-                                    flags=flags)
+                                    flags=flags,
+                                    num_workers=num_workers)
         for i in range(iterations):
             print(f'iteration {i}')
             candidate = deepcopy(self.best_cx_list)
@@ -316,7 +341,9 @@ class InteractiveCxListOptimizer:
             status = self.measure_logical_error_rate(candidate,
                                                      max_num_shots=max_num_shots,
                                                      max_num_errors=max_num_errors,
-                                                     flags=flags)
+                                                     flags=flags,
+                                                     num_workers=num_workers)
+
             self.optimizer_history.append(status)
             if status.objective_value <= self.best_obj:
                 self.best_cx_list = candidate

@@ -16,7 +16,7 @@ def memory_experiment_circuit_from_cx_list(
         logicals: np.ndarray,
         logical_type: str,
         p_cx: float,
-        p_idle: float,
+        p_idle: float = 0,
         both_detectors: bool = False,
         number_of_cycles: int = 1,
         flag: bool = True,
@@ -86,7 +86,7 @@ def memory_experiment_circuit_from_cx_list(
     circ = stim.Circuit()
 
     # initialize data qubits in logical basis
-    circ.append_operation('R' if logical_type == "Z" else 'RX', data_indices)
+    circ.append('R' if logical_type == "Z" else 'RX', data_indices)
 
     def add_detectors(circuit_to_add_detectors, m_counter, cycle):
         # Append detectors.
@@ -97,14 +97,14 @@ def memory_experiment_circuit_from_cx_list(
                                stim.target_rec(meas_list[cycle + 1] - m_counter)]
                 # Label detectors for X stabilizers (the label here is just an example).
 
-                circuit_to_add_detectors.append_operation("DETECTOR", rec_targets, [
+                circuit_to_add_detectors.append("DETECTOR", rec_targets, [
                     cycle, int(a[1:]), 0])
 
         if logical_type == "Z" or both_detectors:
             for a, meas_list in measurement_indexes['Z_syndromes'].items():
                 rec_targets = [stim.target_rec(meas_list[cycle] - m_counter),
                                stim.target_rec(meas_list[cycle + 1] - m_counter)]
-                circuit_to_add_detectors.append_operation("DETECTOR", rec_targets, [
+                circuit_to_add_detectors.append("DETECTOR", rec_targets, [
                     cycle, int(a[1:]), 1])
 
         return circuit_to_add_detectors
@@ -154,11 +154,11 @@ def memory_experiment_circuit_from_cx_list(
                 ii - measurement_counter for ii in [indexes_of_measurements[1]]]
 
             for cycle_index in range(0, number_of_cycles):
-                circ.append_operation("OBSERVABLE_INCLUDE",
-                                      list(
-                                          map(stim.target_rec, [
-                                              index-cycle_index*(measurement_counter//2) for index in indexes])),
-                                      observable_index)
+                circ.append("OBSERVABLE_INCLUDE",
+                            list(
+                                map(stim.target_rec, [
+                                    index-cycle_index*(measurement_counter//2) for index in indexes])),
+                            observable_index)
                 observable_index += 1
 
     noiseless_circ, measurement_counter = create_circuit_layer(
@@ -166,17 +166,17 @@ def memory_experiment_circuit_from_cx_list(
 
     circ += noiseless_circ
     # Append final data measurements.
-    circ.append_operation("M" if logical_type == "Z" else "MX", data_indices)
+    circ.append("M" if logical_type == "Z" else "MX", data_indices)
     measurement_counter += n
 
     # Append logical observables.
 
     for i_logical, logical in enumerate(logicals):
         qubits_in_logical = [i for i in range(n) if logical[i] == 1]
-        circ.append_operation("OBSERVABLE_INCLUDE",
-                              [stim.target_rec(i - n)
-                               for i in qubits_in_logical],
-                              i_logical + circ.num_observables)
+        circ.append("OBSERVABLE_INCLUDE",
+                    [stim.target_rec(i - n)
+                     for i in qubits_in_logical],
+                    i_logical + circ.num_observables)
 
     return circ
 
@@ -198,7 +198,7 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
     cycle = stim.Circuit()
     data_indices = [data_mapping[q] for q in sorted(data_mapping.keys())]
     if p_phenomenological_error > 0:
-        cycle.append_operation(
+        cycle.append(
             "DEPOLARIZE1", data_indices, p_phenomenological_error)
 
     for idx, (q, a) in enumerate(cx_list):
@@ -215,62 +215,65 @@ def build_syndrome_extraction_cycle(ancilla_mapping,
         if idx == first_idx:
             if ancilla_type[a] == "X":
                 # For X stabilizers, reset the ancilla via RX.
-                cycle.append_operation("RX", [ancilla_mapping[a]])
+                cycle.append("RX", [ancilla_mapping[a]])
+
                 if flag:
                     # Prepare the flag qubit (explicitly using flag_mapping).
-                    cycle.append_operation("R", [flag_mapping[a]])
+                    cycle.append("R", [flag_mapping[a]])
+
             elif ancilla_type[a] == "Z":
                 # For Z stabilizers, reset the ancilla via R.
-                cycle.append_operation("R", [ancilla_mapping[a]])
+                cycle.append("R", [ancilla_mapping[a]])
                 if flag:
-                    cycle.append_operation("RX", [flag_mapping[a]])
+                    cycle.append("RX", [flag_mapping[a]])
+
         # Append the CX gate.
         dq = data_mapping[q]
         aq = ancilla_mapping[a]
         if ancilla_type[a] == "X":
             # Insert a flag CX right before the last occurrence.
             if flag and idx == last_idx:
-                cycle.append_operation("CX", [aq, flag_mapping[a]])
-            cycle.append_operation("CX", [aq, dq])
+                cycle.append("CX", [aq, flag_mapping[a]])
+            cycle.append("CX", [aq, dq])
             # Insert a flag CX right after the first occurrence.
             if flag and idx == first_idx:
-                cycle.append_operation("CX", [aq, flag_mapping[a]])
+                cycle.append("CX", [aq, flag_mapping[a]])
         elif ancilla_type[a] == "Z":
             if flag and idx == last_idx:
-                cycle.append_operation("CX", [flag_mapping[a], aq])
-            cycle.append_operation("CX", [dq, aq])
+                cycle.append("CX", [flag_mapping[a], aq])
+            cycle.append("CX", [dq, aq])
             if flag and idx == first_idx:
-                cycle.append_operation("CX", [flag_mapping[a], aq])
+                cycle.append("CX", [flag_mapping[a], aq])
         # insert hook error on ancilla if on the right position
         p_hook_error = hook_idx_to_p.get(idx, 0)
         if p_hook_error > 0:
-            cycle.append_operation("DEPOLARIZE1", [aq], p_hook_error)
+            cycle.append("DEPOLARIZE1", [aq], p_hook_error)
         # At the last occurrence, append flag measurement (if enabled) and then the main measurement.
         if idx == last_idx:
             if flag:
                 if ancilla_type[a] == "X":
-                    cycle.append_operation("M", [flag_mapping[a]])
+                    cycle.append("M", [flag_mapping[a]])
                     measurement_indexes['X_flags'][a].append(
                         measurement_counter)
                     measurement_counter += 1
                 elif ancilla_type[a] == "Z":
-                    cycle.append_operation("MX", [flag_mapping[a]])
+                    cycle.append("MX", [flag_mapping[a]])
                     measurement_indexes['Z_flags'][a].append(
                         measurement_counter)
                     measurement_counter += 1
             if ancilla_type[a] == "X":
                 if p_measurement_error > 0:
-                    cycle.append_operation(
+                    cycle.append(
                         "Z_ERROR", [aq], p_measurement_error)
-                cycle.append_operation("MX", [aq])
+                cycle.append("MX", [aq])
                 measurement_indexes['X_syndromes'][a].append(
                     measurement_counter)
                 measurement_counter += 1
             elif ancilla_type[a] == "Z":
                 if p_measurement_error > 0:
-                    cycle.append_operation(
+                    cycle.append(
                         "X_ERROR", [aq], p_measurement_error)
-                cycle.append_operation("M", [aq])
+                cycle.append("M", [aq])
                 measurement_indexes['Z_syndromes'][a].append(
                     measurement_counter)
                 measurement_counter += 1
