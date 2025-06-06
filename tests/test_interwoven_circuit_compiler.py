@@ -90,10 +90,21 @@ def test_interweave_cxs():
     assert len(interwoven_cx_list) == 8
 
 
-def test_end_to_end():
+def test_end_to_end_noiseless():
     code = RotatedSurfaceCode(L=3, ordering='optimal')
     cx_list = code.generate_cx_list()
     compiler = InterwovenCircuitCompiler(code, cx_list, num_iterations=5)
     compiler.circ.detector_error_model()
     assert compiler.circ.num_observables == 1
     assert compiler.circ.num_detectors == 5*8 + 4
+
+
+def test_end_to_end_noisy():
+    code = RotatedSurfaceCode(L=3, ordering='optimal')
+    cx_list = code.generate_cx_list()
+    compiler = InterwovenCircuitCompiler(
+        code, cx_list, num_iterations=5, p_idle=0.01, p_cx=0.02)
+    compiler.circ.detector_error_model()
+    assert compiler.circ.num_observables == 1
+    assert compiler.circ.num_detectors == 5*8 + 4
+    assert compiler.circ.num_operations > 0  # Ensure some operations were added
